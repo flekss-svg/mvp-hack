@@ -1,0 +1,58 @@
+{
+  "all": [
+    {
+      "model": "CatBoost",
+      "roc_auc": 0.9879,
+      "pr_auc": 0.9755,
+      "precision_at_recall70": 0.9949,
+      "base_rate": 0.2883
+    },
+    {
+      "model": "Базовое правило: текущая задержка",
+      "roc_auc": 0.9567,
+      "pr_auc": 0.9334,
+      "precision_at_recall70": 0.9687,
+      "base_rate": 0.2883
+    }
+  ],
+  "early_warning": [
+    {
+      "model": "CatBoost",
+      "roc_auc": 0.9709,
+      "pr_auc": 0.8666,
+      "precision_at_recall70": 0.8319,
+      "base_rate": 0.1383
+    },
+    {
+      "model": "Базовое правило: текущая задержка",
+      "roc_auc": 0.8928,
+      "pr_auc": 0.658,
+      "precision_at_recall70": 0.5645,
+      "base_rate": 0.1383
+    }
+  ],
+  "n_test": 687662,
+  "n_test_early": 566680,
+  "feature_importance": {
+    "delay_now": 33.7,
+    "ahead_hist_sum": 15.21,
+    "lead_headway_dev": 9.78,
+    "ahead_recent_sum": 5.1,
+    "hour": 5.05,
+    "progress": 4.43,
+    "rain": 3.96,
+    "lead_delay": 3.28,
+    "dow": 2.92,
+    "d_delay_3": 2.9,
+    "stops_left": 2.34,
+    "run_ratio_3": 2.29,
+    "route_recent_delay": 2.07,
+    "ahead_recent_max": 1.77,
+    "ahead_n_segs": 1.54,
+    "ahead_recent_n": 1.25,
+    "is_tram": 1.11,
+    "weekend": 1.09,
+    "ahead_plan_min": 0.2,
+    "holiday": 0.0
+  }
+}
