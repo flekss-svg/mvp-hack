@@ -1,0 +1,531 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Раннее предупреждение задержек — диспетчер</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EEF1F4; --panel:#FFFFFF; --ink:#1B2733; --muted:#5B6875; --line:#D5DCE3;
+  --net:#B9C3CD; --low:#2E8B6A; --mid:#E0A019; --high:#D2352A; --sel:#2257D6;
+  --slow1:#F0B429; --slow2:#D2352A; --chip:#E3E8EE;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#131A21; --panel:#1B242D; --ink:#E6ECF1; --muted:#98A5B1; --line:#2C3843;
+    --net:#3A4855; --low:#3FB58A; --mid:#F0B429; --high:#F0574B; --sel:#6E9BFF; --chip:#26313B;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131A21; --panel:#1B242D; --ink:#E6ECF1; --muted:#98A5B1; --line:#2C3843;
+  --net:#3A4855; --low:#3FB58A; --mid:#F0B429; --high:#F0574B; --sel:#6E9BFF; --chip:#26313B;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*{box-sizing:border-box}
+body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font-family:"Onest",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;
+  font-variant-numeric:tabular-nums}
+.app{display:grid;grid-template-columns:1fr 360px;grid-template-rows:auto 1fr auto;height:100%;min-height:0}
+header{grid-column:1/3;display:flex;align-items:center;gap:24px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+.clock{font-size:40px;font-weight:600;letter-spacing:-0.02em;line-height:1}
+.title h1{font-size:17px;margin:0;font-weight:600}
+.title p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.kpis{display:flex;gap:22px;margin-left:auto;flex-wrap:wrap}
+.kpi b{display:block;font-size:22px;font-weight:600;line-height:1.1}
+.kpi span{color:var(--muted);font-size:12px}
+.kpi.high b{color:var(--high)}
+.mapwrap{position:relative;min-height:0;overflow:hidden}
+canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+canvas:active{cursor:grabbing}
+.legend{position:absolute;left:14px;bottom:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--muted);display:grid;gap:5px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+.legend i.ring{background:transparent;border:2px solid var(--ink);width:10px;height:10px}
+.legend i.bar{border-radius:2px;width:16px;height:4px;vertical-align:2px}
+.zoom{position:absolute;right:14px;top:14px;display:grid;gap:6px}
+.zoom button,.ctrl button,.seg button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;cursor:pointer}
+.zoom button{width:34px;height:34px;font-size:18px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--sel);outline-offset:2px}
+.banner{position:absolute;left:14px;top:14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:12px;color:var(--muted);max-width:340px}
+aside{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+aside section{padding:14px 16px;border-bottom:1px solid var(--line)}
+aside h2{font-size:14px;margin:0 0 10px;font-weight:600}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{padding:5px 10px;font-size:13px}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.field{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+.list{overflow:auto;flex:1;min-height:0;padding:0}
+.list h2{padding:14px 16px 6px;margin:0;position:sticky;top:0;background:var(--panel)}
+.row{display:grid;grid-template-columns:46px 1fr auto;gap:10px;align-items:center;padding:8px 16px;cursor:pointer;border-left:3px solid transparent}
+.row:hover{background:var(--chip)}
+.row.on{border-left-color:var(--sel);background:var(--chip)}
+.badge{font-weight:700;font-size:13px;text-align:center;border-radius:6px;padding:4px 0;background:var(--chip)}
+.badge.tram{box-shadow:inset 0 0 0 2px var(--muted)}
+.row .dest{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .sub{font-size:12px;color:var(--muted)}
+.risk{font-weight:600;font-size:15px;text-align:right}
+.empty{padding:10px 16px;color:var(--muted);font-size:13px}
+.detail dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:13px}
+.detail dt{color:var(--muted)}
+.detail dd{margin:0}
+.detail .next{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.6}
+.model p{margin:0 0 6px;font-size:12.5px;color:var(--muted);line-height:1.45}
+.model b{color:var(--ink)}
+.fi-row{margin:6px 0}
+.fi-row .fi-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px}
+.fi-row .fi-label span:last-child{color:var(--muted)}
+.fi-bar{height:5px;background:var(--chip);border-radius:3px;overflow:hidden}
+.fi-bar i{display:block;height:100%;background:var(--sel)}
+footer{grid-column:1/3;display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;padding:10px 20px;border-top:1px solid var(--line);background:var(--panel)}
+.ctrl{display:flex;gap:6px;align-items:center}
+.ctrl button{height:34px;padding:0 12px;font-size:13px}
+.timeline{position:relative;height:44px}
+.timeline canvas{position:absolute;inset:0;cursor:pointer}
+body.mode-live .mapwrap,body.mode-live .legend,body.mode-live .zoom,body.mode-live .timeline,body.mode-live footer .ctrl{display:none}
+body.mode-live .app{grid-template-columns:1fr}
+body.mode-live aside{border-left:0;border-top:1px solid var(--line)}
+body.mode-live header{grid-column:1}
+body.mode-live footer{grid-column:1}
+#liveCfg{margin-top:8px}
+#liveStatus{margin-top:6px;font-size:12px;color:var(--muted)}
+@media (max-width:900px){
+  html,body{height:auto}
+  .app{grid-template-columns:1fr;grid-template-rows:auto auto auto auto;height:auto}
+  .mapwrap{display:flex;flex-direction:column;overflow:visible}
+  .mapwrap canvas{height:55vh;flex:none}
+  .banner{position:static;order:-1;margin:10px 12px 0;max-width:none}
+  .legend{position:static;margin:0 12px 10px;grid-template-columns:1fr 1fr}
+  .zoom{top:70px}
+  header{grid-column:1;flex-wrap:wrap;gap:12px}
+  .kpis{margin-left:0;gap:16px}
+  aside{border-left:0;border-top:1px solid var(--line);max-height:none}
+  .list{max-height:320px}
+  footer{grid-column:1;grid-template-columns:1fr}
+  .clock{font-size:30px}
+}
+@media (prefers-reduced-motion: reduce){ *{scroll-behavior:auto} }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="clock" id="clock">--:--</div>
+    <div class="title">
+      <h1>Раннее предупреждение задержек</h1>
+      <p id="subtitle">Загрузка…</p>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><b id="kOn">0</b><span>на линии</span></div>
+      <div class="kpi high"><b id="kHigh">0</b><span>высокий риск через 10–15 мин</span></div>
+      <div class="kpi"><b id="kLate">0</b><span>уже опаздывают</span></div>
+      <div class="kpi"><b id="kHit">—</b><span>ранних тревог сбылось</span></div>
+    </div>
+  </header>
+
+  <div class="mapwrap">
+    <canvas id="map" aria-label="Карта маршрутов и машин"></canvas>
+    <div class="banner">Расписание и остановки — реальные (data.mos.ru). Движение машин в демо-режиме смоделировано; режим Live показывает то, что реально прислал сервис (POST /events).</div>
+    <div class="zoom"><button id="zin" aria-label="Приблизить">+</button><button id="zout" aria-label="Отдалить">−</button><button id="zfit" aria-label="Показать всё">⤢</button></div>
+    <div class="legend">
+      <div><i style="background:var(--low)"></i>Низкий риск</div>
+      <div><i style="background:var(--mid)"></i>Средний риск</div>
+      <div><i style="background:var(--high)"></i>Высокий риск</div>
+      <div><i style="background:var(--muted)"></i>Рейс скоро завершится</div>
+      <div><i class="ring"></i>Уже опаздывает ≥ 3 мин</div>
+      <div><i class="bar" style="background:var(--slow1)"></i>Перегон медленнее плана на 1+ мин</div>
+      <div><i class="bar" style="background:var(--slow2)"></i>…на 2,5+ мин</div>
+    </div>
+  </div>
+
+  <aside>
+    <section>
+      <h2>Источник данных</h2>
+      <div class="seg" id="srcSeg">
+        <button data-src="demo" aria-pressed="true">Демо-день</button>
+        <button data-src="live" aria-pressed="false">Live (API)</button>
+      </div>
+      <div id="liveCfg" style="display:none">
+        <input class="field" id="apiBase" type="text" placeholder="http://localhost:8000" autocomplete="off">
+        <div id="liveStatus">не подключено</div>
+      </div>
+    </section>
+    <section>
+      <h2>Показывать</h2>
+      <div class="seg" id="modeSeg">
+        <button data-m="all" aria-pressed="true">Все</button>
+        <button data-m="bus" aria-pressed="false">Автобусы</button>
+        <button data-m="tram" aria-pressed="false">Трамваи</button>
+      </div>
+      <div class="seg" id="riskSeg" style="margin-top:8px">
+        <button data-r="0" aria-pressed="true">Все машины</button>
+        <button data-r="0.6" aria-pressed="false">Только высокий риск</button>
+      </div>
+    </section>
+    <section class="detail" id="detail" hidden></section>
+    <div class="list" id="list"><h2 id="listTitle">Пока по графику, но опоздают</h2><div id="rows"><div class="empty">Загрузка данных…</div></div></div>
+    <section class="model" id="model"><p class="empty" style="padding:0">Метрики модели появятся после загрузки данных.</p></section>
+  </aside>
+
+  <footer>
+    <div class="ctrl">
+      <button id="play" aria-label="Запустить">▶ Пуск</button>
+      <button id="speed">×60</button>
+    </div>
+    <div class="timeline"><canvas id="tl" aria-label="Шкала времени: число машин с высоким риском"></canvas></div>
+  </footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const DOW = ["понедельник","вторник","среда","четверг","пятница","суббота","воскресенье"];
+const fmt = m => { m = ((m % 1440) + 1440) % 1440; const h = Math.floor(m/60), mm = Math.floor(m%60); return String(h).padStart(2,"0")+":"+String(mm).padStart(2,"0"); };
+const H_TARGET = 12.5;
+
+function segBind(id, attr, fn) {
+  $(id).addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    for (const x of $(id).querySelectorAll("button")) x.setAttribute("aria-pressed", x === b);
+    fn(b.dataset[attr]);
+  });
+}
+
+// ---------- режим "Демо-день": прогон записанного дня из data.json ----------
+let D = null;
+
+function startDemo(data) {
+  D = data;
+
+  // ---------- распаковка ----------
+  const trips = D.trips.map((t, id) => {
+    const [r, dir, p, plan0, pd, fact0, fd, risk] = t;
+    const st = D.patterns[p], n = st.length;
+    const plan = new Float64Array(n), fact = new Float64Array(n);
+    plan[0] = plan0; fact[0] = fact0 / 60;
+    for (let i = 1; i < n; i++) { plan[i] = plan[i-1] + pd[i-1]; fact[i] = fact[i-1] + fd[i-1] / 60; }
+    return {id, r, dir, st, plan, fact, risk, t0: fact[0], t1: fact[n-1], mode: D.routes[r][2]};
+  });
+  // целевая точка прогноза и факт «сбылось ли»
+  for (const t of trips) {
+    t.h = new Int32Array(t.st.length).fill(-1);
+    for (let j = 0; j < t.st.length; j++) {
+      if (t.risk[j] < 0) continue;
+      let h = j + 1; while (h < t.st.length && t.plan[h] - t.plan[j] < H_TARGET) h++;
+      if (h < t.st.length) t.h[j] = h;
+    }
+  }
+  // перегоны и их прохождения (для подсветки «тормозящих» участков)
+  const segId = new Map(), segs = [];
+  const trav = [];
+  for (const t of trips) for (let j = 1; j < t.st.length; j++) {
+    const k = t.st[j-1] + "-" + t.st[j];
+    let s = segId.get(k); if (s === undefined) { s = segs.length; segId.set(k, s); segs.push([t.st[j-1], t.st[j]]); }
+    trav.push([t.fact[j], s, (t.fact[j]-t.fact[j-1]) - (t.plan[j]-t.plan[j-1])]);
+  }
+  trav.sort((a, b) => a[0] - b[0]);
+  const travT = Float64Array.from(trav, x => x[0]);
+  const lb = (arr, v) => { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo+hi) >> 1; if (arr[m] < v) lo = m+1; else hi = m; } return lo; };
+
+  // ---------- состояние ----------
+  let T = 7.5 * 60, playing = false, speed = 60, mode = "all", minRisk = 0, selected = null;
+  const tMin = Math.min(...trips.map(t => t.t0)), tMax = Math.max(...trips.map(t => t.t1));
+
+  function stateAt(t, T) {
+    if (T < t.t0 || T > t.t1) return null;
+    let j = 0; while (j + 1 < t.st.length && t.fact[j+1] <= T) j++;
+    const a = D.stops[t.st[j]], b = D.stops[t.st[Math.min(j+1, t.st.length-1)]];
+    const span = j + 1 < t.st.length ? t.fact[j+1] - t.fact[j] : 1;
+    const u = j + 1 < t.st.length ? Math.min(1, (T - t.fact[j]) / Math.max(span, 1e-6)) : 0;
+    return { j, lon: a[0] + (b[0]-a[0])*u, lat: a[1] + (b[1]-a[1])*u,
+             delay: t.fact[j] - t.plan[j], risk: t.risk[j] >= 0 ? t.risk[j] / 100 : null };
+  }
+  function visible(t) { return mode === "all" || t.mode === mode; }
+
+  function snapshot(T) {
+    const v = [];
+    for (const t of trips) {
+      if (!visible(t)) continue;
+      const s = stateAt(t, T); if (s) v.push([t, s]);
+    }
+    return v;
+  }
+  function slowSegs(T) {
+    const i0 = lb(travT, T - 15), i1 = lb(travT, T + 1e-9);
+    const acc = new Map();
+    for (let i = i0; i < i1; i++) { const [, s, ex] = trav[i]; const a = acc.get(s) || [0, 0]; a[0] += ex; a[1]++; acc.set(s, a); }
+    const out = []; for (const [s, [sum, n]] of acc) { const m = sum / n; if (m >= 1) out.push([s, m]); }
+    return out;
+  }
+  function hitRate(T) {
+    // ранние тревоги, выданные 20–30 мин назад машинам, которые тогда шли по графику
+    let y = 0, n = 0;
+    for (const t of trips) {
+      if (!visible(t) || t.t0 > T - 20 || t.t1 < T - 30) continue;
+      for (let j = 0; j < t.st.length; j++) {
+        const f = t.fact[j]; if (f < T - 30 || f > T - 20) continue;
+        if (t.risk[j] < 60 || t.h[j] < 0 || f - t.plan[j] >= D.threshold) continue;
+        const h = t.h[j]; if (t.fact[h] > T) continue;
+        n++; if (t.fact[h] - t.plan[h] >= D.threshold) y++;
+      }
+    }
+    return n >= 5 ? [y, n] : null;
+  }
+
+  // ---------- карта ----------
+  const cv = $("map"), ctx = cv.getContext("2d");
+  const KX = Math.cos(55.75 * Math.PI / 180);
+  let view = {cx: 0, cy: 0, k: 1};
+  function fit() {
+    const xs = D.stops.map(s => s[0] * KX), ys = D.stops.map(s => -s[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const w = cv.clientWidth, h = cv.clientHeight;
+    view = {cx: (x0+x1)/2, cy: (y0+y1)/2, k: 0.9 * Math.min(w / (x1-x0), h / (y1-y0))};
+  }
+  const px = (lon, lat) => [(lon*KX - view.cx) * view.k + cv.clientWidth/2, (-lat - view.cy) * view.k + cv.clientHeight/2];
+
+  let lastSnap = [];
+  function draw() {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== w*dpr || cv.height !== h*dpr) { cv.width = w*dpr; cv.height = h*dpr; }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    // сеть
+    ctx.strokeStyle = css("--net"); ctx.lineWidth = 1.2; ctx.beginPath();
+    for (const [a, b] of segs) { const p = px(...D.stops[a]), q = px(...D.stops[b]); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); }
+    ctx.stroke();
+    // тормозящие перегоны
+    const s1 = css("--slow1"), s2 = css("--slow2");
+    for (const [s, m] of slowSegs(T)) {
+      const [a, b] = segs[s]; const p = px(...D.stops[a]), q = px(...D.stops[b]);
+      ctx.strokeStyle = m >= 2.5 ? s2 : s1; ctx.lineWidth = m >= 2.5 ? 5 : 3.5; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke();
+    }
+    // машины: сначала низкий риск, сверху высокий
+    const snap = snapshot(T); lastSnap = snap;
+    const col = r => r === null ? css("--muted") : r >= 0.6 ? css("--high") : r >= 0.3 ? css("--mid") : css("--low");
+    const items = snap.filter(([, s]) => (s.risk ?? 0) >= minRisk).sort((a, b) => (a[1].risk ?? 0) - (b[1].risk ?? 0));
+    const rad = Math.max(2.5, Math.min(6, view.k / 900));
+    const ink = css("--ink");
+    for (const [t, s] of items) {
+      const [x, y] = px(s.lon, s.lat);
+      if (x < -10 || y < -10 || x > w + 10 || y > h + 10) continue;
+      ctx.fillStyle = col(s.risk); ctx.beginPath(); ctx.arc(x, y, rad, 0, 6.2832); ctx.fill();
+      if (s.delay >= D.threshold) { ctx.strokeStyle = ink; ctx.lineWidth = 1.5; ctx.stroke(); }
+    }
+    if (selected !== null) {
+      const t = trips[selected], s = stateAt(t, T);
+      if (s) { const [x, y] = px(s.lon, s.lat); ctx.strokeStyle = css("--sel"); ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, rad + 6, 0, 6.2832); ctx.stroke(); }
+    }
+    return snap;
+  }
+
+  // ---------- панели ----------
+  function render() {
+    const snap = draw();
+    $("clock").textContent = fmt(T);
+    const rainNow = D.rain.level > 0 && T >= D.rain.start && T <= D.rain.end;
+    $("subtitle").textContent = `${D.date}, ${DOW[D.dow]}` + (rainNow ? " · дождь" : "") + " · демо-воспроизведение";
+    let high = 0, late = 0;
+    for (const [, s] of snap) { if ((s.risk ?? 0) >= 0.6) high++; if (s.delay >= D.threshold) late++; }
+    $("kOn").textContent = snap.length; $("kHigh").textContent = high; $("kLate").textContent = late;
+    const hr = hitRate(T); $("kHit").textContent = hr ? Math.round(100 * hr[0] / hr[1]) + "%" : "—";
+    $("kHit").title = hr ? `Из ${hr[1]} тревог, выданных 20–30 минут назад машинам без опоздания, сбылось ${hr[0]}` : "Недостаточно тревог для проверки";
+    renderList(snap); renderDetail();
+  }
+  function renderList(snap) {
+    const top = snap.filter(([, s]) => (s.risk ?? 0) >= 0.6 && s.delay < D.threshold)
+      .sort((a, b) => a[1].delay - b[1].delay).slice(0, 40);
+    const rows = $("rows");
+    if (!top.length) { rows.innerHTML = '<div class="empty">Сейчас нет машин, которым грозит опоздание. Выберите время в часы пик или запустите воспроизведение.</div>'; return; }
+    rows.innerHTML = top.map(([t, s]) => {
+      const r = D.routes[t.r], dest = D.stopNames[t.st[t.st.length-1]];
+      return `<div class="row${t.id === selected ? " on" : ""}" data-id="${t.id}" tabindex="0">
+        <div class="badge ${r[2]}">${r[0]}</div>
+        <div><div class="dest">→ ${dest}</div><div class="sub">сейчас ${s.delay >= 0 ? "+" : ""}${s.delay.toFixed(1)} мин · ${r[2] === "tram" ? "трамвай" : "автобус"}</div></div>
+        <div class="risk" style="color:var(--high)">${Math.round(s.risk*100)}%</div></div>`;
+    }).join("");
+  }
+  function renderDetail() {
+    const el = $("detail");
+    if (selected === null) { el.hidden = true; return; }
+    const t = trips[selected], s = stateAt(t, T), r = D.routes[t.r];
+    el.hidden = false;
+    if (!s) { el.innerHTML = `<h2>Маршрут ${r[0]}</h2><p class="empty" style="padding:0">Рейс сейчас не на линии.</p>`; return; }
+    const next = [];
+    for (let i = s.j + 1; i < Math.min(t.st.length, s.j + 5); i++) next.push(`${D.stopNames[t.st[i]]} — ${fmt(t.plan[i])}`);
+    let outcome = "";
+    const h = t.h[s.j];
+    if (h >= 0 && t.fact[h] <= T) outcome = `<dt>Проверка</dt><dd>${t.fact[h]-t.plan[h] >= D.threshold ? "опоздал" : "успел"} (${(t.fact[h]-t.plan[h]).toFixed(1)} мин)</dd>`;
+    el.innerHTML = `<h2>Маршрут ${r[0]} · ${r[1]}</h2><dl>
+      <dt>Остановка</dt><dd>${D.stopNames[t.st[s.j]]}</dd>
+      <dt>Отклонение</dt><dd>${s.delay >= 0 ? "+" : ""}${s.delay.toFixed(1)} мин</dd>
+      <dt>Риск через 10–15 мин</dt><dd>${s.risk === null ? "рейс скоро завершится" : Math.round(s.risk*100) + "%"}</dd>${outcome}</dl>
+      <div class="next">Дальше по плану:<br>${next.join("<br>") || "конечная"}</div>`;
+  }
+
+  // ---------- шкала времени ----------
+  const tl = $("tl"), tctx = tl.getContext("2d");
+  const bins = []; for (let x = Math.floor(tMin/5)*5; x <= tMax; x += 5) bins.push(x);
+  let binVals = [];
+  function computeBins() {
+    binVals = bins.map(b => { let n = 0; for (const t of trips) { if (!visible(t)) continue; const s = stateAt(t, b); if (s && (s.risk ?? 0) >= 0.6) n++; } return n; });
+  }
+  function drawTl() {
+    const dpr = window.devicePixelRatio || 1, w = tl.clientWidth, h = tl.clientHeight;
+    tl.width = w*dpr; tl.height = h*dpr; tctx.setTransform(dpr, 0, 0, dpr, 0, 0); tctx.clearRect(0, 0, w, h);
+    const mx = Math.max(1, ...binVals), X = v => (v - tMin) / (tMax - tMin) * w;
+    tctx.fillStyle = css("--high"); tctx.globalAlpha = 0.35;
+    bins.forEach((b, i) => { const bh = (binVals[i] / mx) * (h - 14); tctx.fillRect(X(b), h - 12 - bh, Math.max(1, w / bins.length - 0.5), bh); });
+    tctx.globalAlpha = 1; tctx.fillStyle = css("--muted"); tctx.font = "11px Onest, system-ui";
+    const stepH = w < 600 ? 4 : 2;
+    for (let hh = Math.ceil(tMin/60); hh*60 <= tMax - 40; hh += stepH) tctx.fillText(fmt(hh*60), X(hh*60) - 14, h - 1);
+    if (D.rain.level > 0) { tctx.fillStyle = css("--sel"); tctx.globalAlpha = .25; tctx.fillRect(X(D.rain.start), 0, X(D.rain.end) - X(D.rain.start), 3); tctx.globalAlpha = 1; }
+    tctx.fillStyle = css("--ink"); tctx.fillRect(X(T) - 1, 0, 2, h - 12);
+  }
+  function seekFromEvent(ev) { const r = tl.getBoundingClientRect(); T = tMin + (ev.clientX - r.left) / r.width * (tMax - tMin); render(); drawTl(); }
+  let tlDrag = false;
+  tl.addEventListener("pointerdown", e => { tlDrag = true; tl.setPointerCapture(e.pointerId); seekFromEvent(e); });
+  tl.addEventListener("pointermove", e => { if (tlDrag) seekFromEvent(e); });
+  tl.addEventListener("pointerup", () => tlDrag = false);
+
+  // ---------- взаимодействие ----------
+  let drag = null, moved = false;
+  cv.addEventListener("pointerdown", e => { drag = [e.clientX, e.clientY, view.cx, view.cy]; moved = false; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener("pointermove", e => {
+    if (!drag) return; const dx = e.clientX - drag[0], dy = e.clientY - drag[1];
+    if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+    view.cx = drag[2] - dx / view.k; view.cy = drag[3] - dy / view.k; draw();
+  });
+  cv.addEventListener("pointerup", e => {
+    if (drag && !moved) {
+      const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+      let best = null, bd = 144;
+      for (const [t, s] of lastSnap) { const [a, b] = px(s.lon, s.lat); const d = (a-x)**2 + (b-y)**2; if (d < bd) { bd = d; best = t.id; } }
+      selected = best; render();
+    }
+    drag = null;
+  });
+  function zoomAt(f, x, y) {
+    const w = cv.clientWidth, h = cv.clientHeight;
+    const wx = view.cx + (x - w/2) / view.k, wy = view.cy + (y - h/2) / view.k;
+    view.k *= f; view.cx = wx - (x - w/2) / view.k; view.cy = wy - (y - h/2) / view.k; draw();
+  }
+  cv.addEventListener("wheel", e => { e.preventDefault(); const r = cv.getBoundingClientRect(); zoomAt(e.deltaY < 0 ? 1.2 : 1/1.2, e.clientX - r.left, e.clientY - r.top); }, {passive: false});
+  $("zin").onclick = () => zoomAt(1.4, cv.clientWidth/2, cv.clientHeight/2);
+  $("zout").onclick = () => zoomAt(1/1.4, cv.clientWidth/2, cv.clientHeight/2);
+  $("zfit").onclick = () => { fit(); draw(); };
+  $("rows").addEventListener("click", e => {
+    const row = e.target.closest(".row"); if (!row || source !== "demo") return;
+    selected = +row.dataset.id; const s = stateAt(trips[selected], T);
+    if (s) { view.cx = s.lon * KX; view.cy = -s.lat; if (view.k < 6000) view.k = 6000; }
+    render();
+  });
+  $("rows").addEventListener("keydown", e => { if (e.key === "Enter") e.target.click(); });
+  segBind("modeSeg", "m", v => { mode = v; computeBins(); render(); drawTl(); });
+  segBind("riskSeg", "r", v => { minRisk = +v; render(); });
+  $("play").onclick = () => { playing = !playing; $("play").textContent = playing ? "❚❚ Пауза" : "▶ Пуск"; $("play").setAttribute("aria-label", playing ? "Пауза" : "Запустить"); if (playing) loop(); };
+  $("speed").onclick = () => { speed = speed === 60 ? 300 : speed === 300 ? 15 : 60; $("speed").textContent = "×" + speed; };
+  let lastTs = null, acc = 0;
+  function loop(ts) {
+    if (!playing) { lastTs = null; return; }
+    if (lastTs !== null) {
+      T += (ts - lastTs) / 1000 * speed / 60; if (T > tMax) T = tMin;
+      acc += ts - lastTs; if (acc > 120) { acc = 0; render(); drawTl(); }
+    }
+    lastTs = ts ?? null; requestAnimationFrame(loop);
+  }
+  window.addEventListener("resize", () => { draw(); drawTl(); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => { render(); drawTl(); });
+
+  fit(); computeBins(); renderModel(); render(); drawTl();
+}
+
+// ---------- панель качества модели: строится из reports/metrics.json (через data.json) ----------
+function renderModel() {
+  if (!D || !D.metrics) return;
+  const m = D.metrics, e = m.early_warning;
+  const fi = m.feature_importance || {}, fd = m.feature_descriptions || {};
+  const top = Object.entries(fi).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const maxV = top.length ? top[0][1] : 1;
+  const bars = top.map(([k, v]) => `<div class="fi-row">
+      <div class="fi-label"><span>${fd[k] || k}</span><span>${v.toFixed(1)}</span></div>
+      <div class="fi-bar"><i style="width:${Math.max(4, 100 * v / maxV)}%"></i></div>
+    </div>`).join("");
+  $("model").innerHTML = `<h2>Качество модели</h2>
+    <p>Машины, которые пока идут по графику: из тех, что опоздают через 10–15 минут, модель ловит 70% при точности тревог <b>${Math.round(e[0].precision_at_recall70*100)}%</b>. Правило «смотреть на текущее опоздание» при той же полноте — ${Math.round(e[1].precision_at_recall70*100)}%.</p>
+    <p>Проверено на отложенной неделе. Движение смоделировано, поэтому цифры показывают работоспособность подхода, а не точность на реальных данных.</p>
+    ${top.length ? `<p style="margin-top:10px"><b>Главные признаки модели:</b></p>${bars}` : ""}`;
+}
+
+// ---------- режим "Live": опрос GET /risk работающего сервиса (app/api.py) ----------
+let source = "demo", liveTimer = null;
+
+function apiBase() {
+  return ($("apiBase").value || "").trim().replace(/\/+$/, "");
+}
+async function pollLive() {
+  const base = apiBase();
+  if (!base) { $("liveStatus").textContent = "укажите адрес API, например http://localhost:8000"; return; }
+  try {
+    const r = await fetch(base + "/risk?limit=50");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const items = await r.json();
+    $("liveStatus").textContent = `подключено · обновлено ${new Date().toLocaleTimeString("ru-RU")}`;
+    renderLive(items);
+  } catch (err) {
+    $("liveStatus").textContent = "нет соединения с API (" + err.message + ")";
+  }
+}
+function renderLive(items) {
+  const threshold = D ? D.threshold : 3;
+  $("clock").textContent = new Date().toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"});
+  $("subtitle").textContent = "Live · данные из работающего сервиса";
+  const high = items.filter(v => v.risk >= 0.6).length;
+  const late = items.filter(v => v.delay_now >= threshold).length;
+  $("kOn").textContent = items.length; $("kHigh").textContent = high; $("kLate").textContent = late; $("kHit").textContent = "—";
+  $("kHit").title = "В live-режиме проверка ранних тревог недоступна — нужна история.";
+  const top = items.filter(v => v.risk >= 0.6 && v.delay_now < threshold).sort((a, b) => b.risk - a.risk).slice(0, 40);
+  const rows = $("rows");
+  if (!top.length) { rows.innerHTML = '<div class="empty">Нет машин с высоким риском по данным сервиса (или сервис еще не получил ни одного события).</div>'; return; }
+  rows.innerHTML = top.map(v => `<div class="row" style="cursor:default">
+      <div class="badge">${v.route}</div>
+      <div><div class="dest">остановка ${v.stop_id}</div><div class="sub">сейчас ${v.delay_now >= 0 ? "+" : ""}${v.delay_now.toFixed(1)} мин</div></div>
+      <div class="risk" style="color:var(--high)">${Math.round(v.risk*100)}%</div></div>`).join("");
+}
+function setSource(v) {
+  source = v;
+  document.body.classList.toggle("mode-live", v === "live");
+  $("liveCfg").style.display = v === "live" ? "block" : "none";
+  $("listTitle").textContent = v === "live" ? "Риск сейчас (live)" : "Пока по графику, но опоздают";
+  $("detail").hidden = true;
+  if (v === "live") {
+    if (liveTimer) clearInterval(liveTimer);
+    pollLive();
+    liveTimer = setInterval(pollLive, 4000);
+  } else {
+    if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+    if (D) { $("subtitle").textContent = `${D.date}, ${DOW[D.dow]} · демо-воспроизведение`; }
+  }
+}
+segBind("srcSeg", "src", setSource);
+{
+  const saved = localStorage.getItem("apiBase");
+  if (saved) { try { $("apiBase").value = saved; } catch (e) {} }
+}
+$("apiBase").addEventListener("change", () => { try { localStorage.setItem("apiBase", $("apiBase").value); } catch (e) {} });
+
+// ---------- загрузка демо-дня (не статично зашито в HTML — отдельный файл data.json) ----------
+fetch("./data.json")
+  .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+  .then(startDemo)
+  .catch(err => {
+    $("rows").innerHTML = '<div class="empty">Не удалось загрузить data.json (' + err.message + '). Запустите <code>python -m app.dashboard_export</code> или переключитесь на Live.</div>';
+    $("subtitle").textContent = "Нет данных демо-дня";
+  });
+</script>
+</body>
+</html>

@@ -1,42 +1,42 @@
-"""Прогон тестового дня через поток и модель -> компактный JSON для дашборда -> HTML.
+"""Прогон тестового дня через движок признаков и модель -> data.json для дашборда.
 
-Дашборд сам восстанавливает положение машин на любой момент дня (интерполяция между
-остановками), поэтому храним не кадры, а события рейсов.
+Дашборд (dashboard/index.html) — статичный HTML-файл, который сам грузит data.json через
+fetch() и восстанавливает положение машин на любой момент дня (интерполяция между
+остановками), поэтому храним не кадры, а события рейсов. Файл dashboard/index.html
+перегенерировать не нужно — меняется только data.json.
+
+Для «живого» режима дашборд вместо data.json опрашивает GET /risk работающего сервиса
+(см. app/api.py) — это переключается прямо в интерфейсе дашборда.
 """
-import glob
 import json
-import pickle
 import sys
 
 import numpy as np
 import pandas as pd
-from catboost import CatBoostClassifier
 
-from config import PROC, MODELS, REPORTS, DASH, LATE_THRESHOLD_MIN
-from features import FEATURES, StreamState, load_schedule_index, run_day
-from train import day_context
+from app.config import DASH, LATE_THRESHOLD_MIN, REPORTS
+from app.data_sources import processed_repository as repo
+from app.engine.stream_state import StreamState, run_day
+from app.model.artifacts import ModelArtifacts
+from app.model.training import day_context
 
 
-def main(date=None):
-    files = sorted(glob.glob(str(PROC / "fact" / "day=*.parquet")))
+def main(date: str | None = None) -> None:
+    files = repo.list_fact_days()
     test = files[21:]
-    f = next((x for x in test if date and date in x), test[3])
-    date = f.split("day=")[1][:10]
-    meta = pd.read_parquet(PROC / "sim_meta.parquet").set_index("date")
+    f = next((x for x in test if date and date in str(x)), test[3])
+    date = repo.fact_day_date(f)
+    meta = repo.read_sim_meta()
 
-    model = CatBoostClassifier()
-    model.load_model(str(MODELS / "delay_catboost.cbm"))
-    with open(MODELS / "hist_profile.pkl", "rb") as fh:
-        hist = pickle.load(fh)
-    routes = pd.read_parquet(PROC / "routes.parquet")
-    stops = pd.read_parquet(PROC / "stops.parquet")
-    schedule = load_schedule_index()
+    artifacts = ModelArtifacts.load()
+    routes = repo.read_routes()
+    stops = repo.read_stops()
 
-    state = StreamState(schedule, hist, dict(zip(routes.route_id, routes["mode"])))
+    state = StreamState(artifacts.schedule, artifacts.hist_profile, artifacts.route_mode)
     state.set_context(**day_context(date, meta.loc[date]))
-    df = pd.read_parquet(f)
+    df = repo.read_fact_day(f)
     X, M = run_day(state, df, sample=1.0)
-    M["risk"] = model.predict_proba(X[FEATURES])[:, 1]
+    M["risk"] = artifacts.predictor.predict_risk(X)
     print(f"{date}: {len(df):,} событий, {len(M):,} прогнозов")
 
     # проверка уровней риска на этом дне
@@ -45,9 +45,9 @@ def main(date=None):
         m = lv == i
         print(f"  риск {n:8s}: {m.mean():6.1%} прогнозов, опоздали через 12 мин: {M.y[m].mean():.1%}")
 
-    risk = dict(zip(zip(M.trip_id, M.k), M.risk))
+    risk_by_key = dict(zip(zip(M.trip_id, M.k), M.risk))
 
-    # --- компактная упаковка ---
+    # --- компактная упаковка для фронтенда ---
     used = sorted(set(df.stop_id))
     sidx = {s: i for i, s in enumerate(used)}
     sxy = stops.set_index("stop_id").loc[used]
@@ -64,22 +64,21 @@ def main(date=None):
             patterns.append(list(pat))
         plan = g.plan.to_numpy()
         fact_s = np.round(g.fact.to_numpy() * 60).astype(int)
-        rk = [int(round(risk[(tid, k)] * 100)) if (tid, k) in risk else -1 for k in g.k]
+        rk = [int(round(risk_by_key[(tid, k)] * 100)) if (tid, k) in risk_by_key else -1 for k in g.k]
         trips_out.append([ridx[g.route_id.iloc[0]], int(g.direction_id.iloc[0]),
                           pat_idx[pat], int(plan[0]), np.diff(plan).astype(int).tolist(),
                           int(fact_s[0]), np.diff(fact_s).tolist(), rk])
 
-    metrics = json.load(open(REPORTS / "metrics.json"))
+    metrics = json.loads((REPORTS / "metrics.json").read_text(encoding="utf-8"))
     m = meta.loc[date]
     data = dict(date=date, dow=pd.Timestamp(date).dayofweek,
                 rain=dict(level=float(m.rain), start=float(m.rain_from), end=float(m.rain_to)),
                 threshold=LATE_THRESHOLD_MIN, stops=stops_out, stopNames=stop_names,
                 routes=routes_out, patterns=patterns, trips=trips_out, metrics=metrics)
+    DASH.mkdir(parents=True, exist_ok=True)
     js = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     (DASH / "data.json").write_text(js, encoding="utf-8")
-    html = (DASH / "template.html").read_text(encoding="utf-8").replace("__DATA__", js)
-    (DASH / "dashboard.html").write_text(html, encoding="utf-8")
-    print(f"dashboard.html: {len(html) / 1e6:.1f} МБ, рейсов {len(trips_out):,}, "
+    print(f"data.json: {len(js) / 1e6:.1f} МБ, рейсов {len(trips_out):,}, "
           f"шаблонов остановок {len(patterns):,}")
 
 

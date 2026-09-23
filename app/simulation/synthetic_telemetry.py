@@ -1,7 +1,7 @@
 """Синтетический «факт» движения на основе реального планового расписания Москвы.
 
-ВАЖНО: это заглушка на время, пока нет реальной телематики. Модуль генерирует фактическое
-время прохождения остановок с правдоподобной механикой сбоев:
+ВРЕМЕННАЯ ЗАГЛУШКА: пока нет реальной телематики организаторов, этот модуль генерирует
+фактическое время прохождения остановок с правдоподобной механикой сбоев:
   * часы пик и «узкие» перегоны (у каждого перегона своя скрытая чувствительность к трафику);
   * дождь (погода известна диспетчеру, это легальный признак);
   * инциденты: перегон «встает» на 15–50 минут (ДТП, ремонт) — их модель должна
@@ -9,10 +9,11 @@
   * эффект «пачки»: чем больше разрыв с впереди идущей машиной, тем дольше посадка;
   * водитель немного нагоняет при опоздании и не уезжает раньше графика.
 
-Когда появятся реальные данные, этот модуль не нужен: ingest.py превращает GPS-отметки
-в тот же формат «рейс — остановка — план — факт».
-
-Выход: data/processed/fact/day=YYYY-MM-DD.parquet и data/processed/sim_meta.parquet
+Выход — та же каноническая схема событий (domain.schema.STOP_EVENT_COLUMNS), что и у
+адаптера реальной телематики (data_sources/gps_telemetry.py). Поэтому engine/model/service
+не отличают синтетические данные от настоящих: когда появится телематика организаторов,
+этот модуль просто выпадает из run_all.sh, а простой факт кладется в data/processed/fact/
+через тот же processed_repository.save_fact_day().
 """
 import math
 import random
@@ -20,7 +21,8 @@ import random
 import numpy as np
 import pandas as pd
 
-from config import PROC, SIM_START, SIM_DAYS, RANDOM_SEED
+from app.config import RANDOM_SEED, SIM_DAYS, SIM_START
+from app.data_sources import processed_repository as repo
 
 trips_service = {}  # trip_id -> service_id
 DOW = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -54,9 +56,9 @@ def build_trip_table(trips, st):
 
 def main():
     rng = random.Random(RANDOM_SEED)
-    trips = pd.read_parquet(PROC / "trips.parquet")
-    st = pd.read_parquet(PROC / "stop_times.parquet")
-    cal = pd.read_parquet(PROC / "calendar.parquet")
+    trips = repo.read_trips()
+    st = repo.read_stop_times()
+    cal = repo.read_calendar()
     table = build_trip_table(trips, st)
     trips_service.update(dict(zip(trips.trip_id, trips.service_id)))
 
@@ -73,10 +75,7 @@ def main():
         sens[sg] = min(b, 4.0)
     seg_list = segs
 
-    out_dir = PROC / "fact"
-    out_dir.mkdir(exist_ok=True)
     meta = []
-
     for d in range(SIM_DAYS):
         date = pd.Timestamp(SIM_START) + pd.Timedelta(days=d)
         weekend = date.dayofweek >= 5
@@ -102,12 +101,12 @@ def main():
         df = pd.DataFrame(rows, columns=["trip_id", "route_id", "direction_id", "k",
                                                "stop_id", "plan", "fact"])
         df["date"] = date.date().isoformat()
-        df.to_parquet(out_dir / f"day={date.date()}.parquet", index=False)
+        repo.save_fact_day(df, date.date())
         print(f"{date.date()} {'вых' if weekend else 'будн'} рейсов: {df.trip_id.nunique():>6,}"
               f"  событий: {len(df):>8,}  ср. задержка: {(df.fact - df.plan).mean():5.2f} мин"
               f"  дождь: {rain:.1f}  инцидентов: {meta[-1]['n_incidents']}")
 
-    pd.DataFrame(meta).to_parquet(PROC / "sim_meta.parquet", index=False)
+    repo.save_sim_meta(pd.DataFrame(meta))
 
 
 def _simulate_day(rng, date, weekend, services, table, sens, incidents, rain, r0, r1):

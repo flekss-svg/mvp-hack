@@ -1,7 +1,9 @@
-"""Адаптер телематики: GPS-отметки -> события «машина прошла остановку».
+"""Адаптер телематики: GPS-отметки -> события «машина прошла остановку»
+(domain.schema.STOP_EVENT_COLUMNS).
 
 Это единственное место, которое нужно переписать под реальные данные организаторов.
-Все остальное (признаки, модель, дашборд) работает с событиями и не знает, откуда они пришли.
+Все остальное (engine, model, service, дашборд) работает с событиями в канонической схеме
+и не знает, откуда они пришли — из этого адаптера или из simulation/synthetic_telemetry.py.
 
 Ожидаемая схема отметки (Ping) после декодирования протокола:
     vehicle_id, trip_id, route_id, direction_id, ts_min, lat, lon, speed
@@ -15,6 +17,8 @@ import math
 
 import numpy as np
 import pandas as pd
+
+from app.domain.schema import STOP_EVENT_COLUMNS
 
 STOP_RADIUS_M = 60.0
 
@@ -33,6 +37,8 @@ def pings_to_events(pings: pd.DataFrame, schedule: dict, stops_xy: dict) -> pd.D
 
     Для каждой остановки рейса берем момент максимального сближения с ней. Если отметки
     редкие и машина «перепрыгнула» остановку, время интерполируем между соседними.
+
+    Возвращает DataFrame с колонками domain.schema.STOP_EVENT_COLUMNS.
     """
     out = []
     for trip_id, g in pings.sort_values("ts_min").groupby("trip_id", sort=False):
@@ -69,8 +75,7 @@ def pings_to_events(pings: pd.DataFrame, schedule: dict, stops_xy: dict) -> pd.D
         for i in range(first, last + 1):
             out.append((trip_id, meta["route_id"], meta["direction_id"], i, stops[i],
                         plan[i], float(filled[i])))
-    return pd.DataFrame(out, columns=["trip_id", "route_id", "direction_id", "k", "stop_id",
-                                      "plan", "fact"])
+    return pd.DataFrame(out, columns=STOP_EVENT_COLUMNS)
 
 
 def synth_pings(events: pd.DataFrame, stops_xy: dict, every_sec=20, noise_m=12, seed=0):
@@ -93,15 +98,15 @@ def synth_pings(events: pd.DataFrame, stops_xy: dict, every_sec=20, noise_m=12, 
                                        "ts_min", "lat", "lon"])
 
 
-if __name__ == "__main__":
-    import glob
-    from config import PROC
-    from features import load_schedule_index
+def _self_test():
+    """Самопроверка адаптера на синтетическом треке: события -> GPS -> события, сверяем ошибку."""
+    from app.data_sources import processed_repository as repo
+    from app.engine.stream_state import load_schedule_index
 
-    schedule = load_schedule_index()
-    stops = pd.read_parquet(PROC / "stops.parquet")
+    schedule = load_schedule_index(repo.read_stop_times())
+    stops = repo.read_stops()
     stops_xy = dict(zip(stops.stop_id, zip(stops.stop_lon, stops.stop_lat)))
-    ev = pd.read_parquet(sorted(glob.glob(str(PROC / "fact" / "*.parquet")))[-1])
+    ev = repo.read_fact_day(repo.list_fact_days()[-1])
     sample = ev[ev.trip_id.isin(ev.trip_id.drop_duplicates().sample(300, random_state=1))]
     pings = synth_pings(sample, stops_xy)
     rec = pings_to_events(pings, schedule, stops_xy)
@@ -110,3 +115,7 @@ if __name__ == "__main__":
     print(f"Проверка адаптера на 300 рейсах: {len(pings):,} GPS-отметок -> {len(rec):,} событий")
     print(f"Восстановлено остановок: {len(m) / len(sample):.1%}")
     print(f"Ошибка времени прохождения: медиана {err.median():.0f} с, 90% {err.quantile(.9):.0f} с")
+
+
+if __name__ == "__main__":
+    _self_test()

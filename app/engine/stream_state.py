@@ -1,7 +1,12 @@
 """Потоковый расчет признаков.
 
-Один и тот же класс StreamState используется и для обучения (прогон истории), и в сервисе
-(живой поток). Так признаки в обучении и в проде считаются одинаково — без расхождений.
+Один и тот же класс StreamState используется и для обучения (прогон истории в run_day),
+и в живом сервисе (service/risk_service.py). Так признаки в обучении и в проде считаются
+одинаково — без расхождений.
+
+Этот модуль не знает, откуда взялись события (симулятор или реальная телематика) и какая
+ML-библиотека обучается на его выходе — он оперирует только канонической схемой из
+domain/schema.py (StopEvent) и отдает чистые числовые признаки (FEATURES).
 
 Событие на входе: машина прошла остановку
     trip_id, route_id, direction_id, k (номер остановки в рейсе), stop_id, plan, fact
@@ -13,23 +18,21 @@ from collections import defaultdict, deque
 import numpy as np
 import pandas as pd
 
-from config import PROC, LATE_THRESHOLD_MIN, HORIZON_MIN
+from app.config import HORIZON_MIN, LATE_THRESHOLD_MIN
+from app.data_sources import processed_repository as repo
+from app.engine.feature_definitions import FEATURES
 
 H_TARGET = (HORIZON_MIN[0] + HORIZON_MIN[1]) / 2  # 12.5 мин: целевая точка прогноза
 RECENT_TTL = 20.0     # информация о перегоне «живет» 20 минут
 RECENT_TAU = 10.0     # и затухает с этой постоянной
 
-FEATURES = [
-    "delay_now", "d_delay_3", "run_ratio_3", "lead_delay", "lead_headway_dev",
-    "route_recent_delay", "ahead_recent_sum", "ahead_recent_max", "ahead_recent_n",
-    "ahead_hist_sum", "ahead_plan_min", "ahead_n_segs", "stops_left", "progress",
-    "hour", "dow", "weekend", "holiday", "rain", "is_tram",
-]
 
+def load_schedule_index(stop_times: pd.DataFrame | None = None) -> dict:
+    """trip_id -> (stops[], plan[]) из планового расписания (статичные данные).
 
-def load_schedule_index():
-    """trip_id -> (stops[], plan[]) из планового расписания (статичные данные)."""
-    st = pd.read_parquet(PROC / "stop_times.parquet")
+    Если stop_times не передан, читается через processed_repository (data/processed/stop_times.parquet).
+    """
+    st = stop_times if stop_times is not None else repo.read_stop_times()
     g = st.groupby("trip_id", sort=False)
     stops, plan = g["stop_id"].apply(list), g["arr_min"].apply(list)
     return {t: (stops[t], plan[t]) for t in stops.index}
@@ -147,8 +150,9 @@ def build_hist_profile(fact_days):
     return {((a, b), h): v for (a, b, h), v in p.items()}
 
 
-def run_day(state, df, sample=1.0, rng=None, on_row=None):
-    """Прогоняет день событий через поток. Возвращает таблицу признаков + цель."""
+def run_day(state: StreamState, df: pd.DataFrame, sample=1.0, rng=None, on_row=None):
+    """Прогоняет день событий (в канонической схеме STOP_EVENT_COLUMNS) через поток.
+    Возвращает таблицу признаков (X, колонки FEATURES) + метаданные и цель (M)."""
     df = df.sort_values("fact", kind="stable")
     cols = ["trip_id", "route_id", "direction_id", "k", "stop_id", "plan", "fact"]
     rows, meta = [], []
