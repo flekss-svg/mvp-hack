@@ -5,11 +5,12 @@
 README — для прода нужен Redis/аналог). Используется тонким HTTP-слоем app/api.py; ничего
 не знает про FastAPI, HTTP или JSON — только про domain-схему, engine и model.
 """
-from datetime import date as _date
+from datetime import date as _date, datetime
 from typing import Iterable
 
 import pandas as pd
 
+from app.config import ALERT_LIMIT, LATE_THRESHOLD_MIN, RISK_LEVELS
 from app.domain.schema import RiskPrediction, StopEvent
 from app.engine.stream_state import StreamState
 from app.model.artifacts import ModelArtifacts
@@ -46,6 +47,7 @@ class RiskService:
                 self._latest[e["trip_id"]] = RiskPrediction(
                     trip_id=e["trip_id"],
                     route=self._artifacts.route_name.get(e["route_id"], e["route_id"]),
+                    mode=self._artifacts.route_mode.get(e["route_id"], "other"),
                     stop_id=e["stop_id"], t=e["fact"],
                     delay_now=round(f["delay_now"], 1), risk=round(float(prob), 3))
         return len(rows)
@@ -53,6 +55,40 @@ class RiskService:
     def current_risk(self, limit: int = 50, min_risk: float = 0.0) -> list[RiskPrediction]:
         items = [v for v in self._latest.values() if v["risk"] >= min_risk]
         return sorted(items, key=lambda v: -v["risk"])[:limit]
+
+    def snapshot(self, limit: int = ALERT_LIMIT) -> dict:
+        """Готовый срез для дашборда: те же KPI и тот же формат тревог, что у записанного дня
+        (service/replay_service.py), чтобы фронтенд рисовал их одним и тем же компонентом."""
+        items = list(self._latest.values())
+        high = [v for v in items if v["risk"] >= RISK_LEVELS[1]]
+        late = [v for v in items if v["delay_now"] >= LATE_THRESHOLD_MIN]
+        alerts = sorted((v for v in high if v["delay_now"] < LATE_THRESHOLD_MIN),
+                        key=lambda v: v["delay_now"])[:limit]
+        return {
+            "clock": datetime.now().strftime("%H:%M"),
+            "tracked": len(items),
+            "kpi": [
+                {"key": "onLine", "label": "рейсов под наблюдением", "value": str(len(items))},
+                {"key": "high", "label": "высокий риск через 10–15 мин", "tone": "high",
+                 "value": str(len(high))},
+                {"key": "late", "label": "уже опаздывают", "value": str(len(late))},
+                {"key": "hit", "label": "ранних тревог сбылось", "value": "—",
+                 "hint": "В live-режиме проверка тревог появится, когда накопится история"},
+            ],
+            "alerts": [{
+                "tripId": v["trip_id"],
+                "route": v["route"],
+                "mode": v["mode"],
+                "dest": self._destination(v["trip_id"]),
+                "stop": self._artifacts.stop_name.get(v["stop_id"], v["stop_id"]),
+                "delay": v["delay_now"],
+                "risk": int(round(v["risk"] * 100)),
+            } for v in alerts],
+        }
+
+    def _destination(self, trip_id: str) -> str:
+        stops, _ = self._artifacts.schedule[trip_id]
+        return self._artifacts.stop_name.get(stops[-1], "")
 
     @property
     def schedule_size(self) -> int:

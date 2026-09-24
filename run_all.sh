@@ -6,4 +6,5 @@ python -m app.data_sources.mos_ru_schedule    # CSV -> parquet, подвыбор
 python -m app.simulation.synthetic_telemetry  # синтетический факт (убрать, когда будет телематика)
 python -m app.data_sources.gps_telemetry      # самопроверка адаптера GPS -> остановки
 python -m app.model.training                  # признаки, обучение, метрики -> reports/metrics.json
-python -m app.dashboard_export                 # прогон тестового дня -> dashboard/data.json
+python -m app.replay_build                    # прогон тестового дня -> кэш демо-дня для API
+(cd web && npm install && npm run build)      # сборка дашборда -> web/dist, отдается API

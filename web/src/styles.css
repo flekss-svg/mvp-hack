@@ -1,0 +1,597 @@
+:root {
+  --bg: #eef2f6;
+  --panel: #ffffff;
+  --panel-soft: #f6f8fa;
+  --ink: #16202b;
+  --muted: #5f6c7b;
+  --line: #e1e7ed;
+  --net: #c6cfd9;
+
+  --low: #1e8a60;
+  --mid: #c4830f;
+  --high: #c7362b;
+  --sel: #1f58d6;
+  --slow: #e0a019;
+  --slow-strong: #c7362b;
+  --chip: #edf1f5;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+}
+
+button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: #c8d2dc;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+button:focus-visible,
+canvas:focus-visible {
+  outline: 2px solid var(--sel);
+  outline-offset: 2px;
+}
+
+/* ---------- каркас ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  min-height: 0;
+}
+
+.app-live {
+  grid-template-columns: 1fr;
+}
+
+.header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 14px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.clock {
+  font-size: 40px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.header-title h1 {
+  font-size: 17px;
+}
+
+.header-title p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kpis {
+  display: flex;
+  gap: 22px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.kpi b {
+  display: block;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.kpi span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.kpi-high b {
+  color: var(--high);
+}
+
+/* ---------- карта ---------- */
+
+.stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.map,
+.map canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.map canvas {
+  display: block;
+  cursor: grab;
+  touch-action: none;
+}
+
+.map canvas:active {
+  cursor: grabbing;
+}
+
+.stage-note {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.map-zoom {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.map-zoom button {
+  width: 34px;
+  height: 34px;
+  font-size: 18px;
+}
+
+.banner {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  max-width: 340px;
+  margin: 0;
+  padding: 8px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.legend {
+  position: absolute;
+  bottom: 14px;
+  left: 14px;
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dot,
+.bar {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot-low { background: var(--low); }
+.dot-mid { background: var(--mid); }
+.dot-high { background: var(--high); }
+.dot-muted { background: var(--muted); }
+.dot-ring { border: 2px solid var(--ink); }
+
+.bar {
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+  vertical-align: 2px;
+}
+
+.bar-slow { background: var(--slow); }
+.bar-slow-strong { background: var(--slow-strong); height: 5px; }
+
+/* ---------- боковая панель ---------- */
+
+.aside {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+}
+
+.app-live .aside {
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+
+.panel {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel h2 {
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.segmented + .segmented {
+  margin-top: 8px;
+}
+
+.segmented button {
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.segmented button[aria-pressed='true'] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--panel);
+}
+
+.empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sel);
+  font-size: 12px;
+}
+
+/* ---------- карточка рейса ---------- */
+
+.trip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.trip h2 {
+  margin-bottom: 8px;
+}
+
+.trip-name {
+  display: block;
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 12.5px;
+}
+
+.trip dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 13px;
+}
+
+.trip dt {
+  color: var(--muted);
+}
+
+.trip dd {
+  margin: 0;
+}
+
+.risk-high { color: var(--high); font-weight: 600; }
+.risk-mid { color: var(--mid); font-weight: 600; }
+.risk-low { color: var(--low); font-weight: 600; }
+.risk-muted { color: var(--muted); }
+
+.trip-next {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.trip-next ul {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trip-next li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+/* ---------- список тревог ---------- */
+
+.alerts {
+  flex: none;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.alerts h2 {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 14px 16px 8px;
+  background: var(--panel);
+  font-size: 14px;
+}
+
+.alerts .empty {
+  padding: 0 16px;
+}
+
+.alerts ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.alert {
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 16px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  background: none;
+  text-align: left;
+}
+
+.alert:hover:not(:disabled) {
+  background: var(--chip);
+}
+
+.alert.on {
+  border-left-color: var(--sel);
+  background: var(--chip);
+}
+
+.badge {
+  padding: 4px 0;
+  border-radius: 6px;
+  background: var(--chip);
+  font-weight: 700;
+  font-size: 13px;
+  text-align: center;
+}
+
+.badge-tram {
+  box-shadow: inset 0 0 0 2px var(--muted);
+}
+
+.alert-body {
+  min-width: 0;
+}
+
+.alert-dest,
+.alert-sub {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.alert-dest {
+  font-size: 13px;
+}
+
+.alert-sub {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.alert-risk {
+  color: var(--high);
+  font-weight: 600;
+  font-size: 15px;
+}
+
+/* ---------- качество модели ---------- */
+
+.model p {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.model b {
+  color: var(--ink);
+}
+
+.model h3 {
+  margin: 12px 0 6px;
+  font-size: 12.5px;
+}
+
+.feature {
+  margin: 6px 0;
+}
+
+.feature-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+
+.feature-label span:last-child {
+  color: var(--muted);
+}
+
+.feature-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--chip);
+  overflow: hidden;
+}
+
+.feature-bar i {
+  display: block;
+  height: 100%;
+  background: var(--sel);
+}
+
+/* ---------- нижняя панель ---------- */
+
+.footer {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 20px;
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+
+.controls {
+  display: flex;
+  gap: 6px;
+}
+
+.controls button {
+  height: 34px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.controls .primary {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--panel);
+}
+
+.timeline {
+  position: relative;
+  height: 44px;
+}
+
+.timeline canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* ---------- узкий экран ---------- */
+
+@media (max-width: 900px) {
+  html,
+  body,
+  #root {
+    height: auto;
+  }
+
+  .app {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .kpis {
+    margin-left: 0;
+    gap: 16px;
+  }
+
+  .clock {
+    font-size: 30px;
+  }
+
+  .stage {
+    overflow: visible;
+  }
+
+  .map,
+  .map canvas {
+    height: 55vh;
+  }
+
+  .banner {
+    max-width: calc(100% - 28px);
+  }
+
+  .aside {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    overflow: visible;
+  }
+}

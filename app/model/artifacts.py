@@ -21,6 +21,7 @@ class ModelArtifacts:
     schedule: dict
     route_mode: dict
     route_name: dict
+    stop_name: dict
 
     @classmethod
     def load(cls, models_dir: Path = MODELS) -> "ModelArtifacts":
@@ -28,10 +29,12 @@ class ModelArtifacts:
         with open(models_dir / "hist_profile.pkl", "rb") as fh:
             hist_profile = pickle.load(fh)
         routes = repo.read_routes()
+        stops = repo.read_stops()
         return cls(
             predictor=predictor,
             hist_profile=hist_profile,
             schedule=load_schedule_index(repo.read_stop_times()),
             route_mode=repo.route_mode_map(routes),
             route_name=repo.route_name_map(routes),
+            stop_name=dict(zip(stops.stop_id, stops.stop_name)),
         )

@@ -51,6 +51,7 @@ class RiskPrediction(TypedDict):
 
     trip_id: str
     route: str
+    mode: str            # "bus" | "tram" | "trolley" | "other"
     stop_id: str
     t: float
     delay_now: float

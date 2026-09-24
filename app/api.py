@@ -1,33 +1,95 @@
-"""Веб-сервис предиктора: тонкий HTTP-слой (FastAPI) поверх бизнес-логики в service/.
+"""HTTP-слой: тонкий FastAPI поверх бизнес-логики в service/.
+
+Весь дашборд собирается здесь, а не в браузере. Фронтенд (web/) запрашивает готовые
+кадры, KPI и тревоги и только рисует их — в нем нет ни порогов риска, ни интерполяции
+положения машин, ни распаковки данных.
 
 Запуск (из корня репозитория):
     uvicorn app.api:app --reload
 
-POST /events   — пачка событий «машина прошла остановку» (после ingest-адаптера)
-GET  /risk     — текущий риск по всем активным рейсам, отсортирован по убыванию
-POST /context  — погода/праздник на сегодня
-GET  /health
+    GET  /api/health              — что доступно сервису прямо сейчас
+    GET  /api/model               — качество модели (из reports/metrics.json)
+    GET  /api/replay/day          — метаданные записанного дня + геометрия сети
+    GET  /api/replay/frame        — кадр на момент t: машины, KPI, тревоги, медленные перегоны
+    GET  /api/replay/timeline     — шкала времени: сколько машин с высоким риском по часам
+    GET  /api/live/snapshot       — то же по форме, но из живого потока событий
+    POST /api/events              — пачка событий «машина прошла остановку»
+    POST /api/context             — погода/праздник на сегодня
 
-Дашборд (dashboard/index.html) отдается статикой на /dashboard/ и в режиме "Live" сам
-опрашивает GET /risk — так дашборд связан с бэкендом напрямую, а не только через
-сгенерированный заранее data.json (см. app/dashboard_export.py).
+Собранный фронтенд (web/dist) отдается статикой в корне — сервис и дашборд поднимаются
+одной командой.
 """
-from fastapi import FastAPI
+import json
+from typing import Callable
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.config import DASH
+from app.config import HORIZON_MIN, LATE_THRESHOLD_MIN, REPORTS, WEB_DIST
+from app.engine.feature_definitions import FEATURE_DESCRIPTIONS
 from app.model.artifacts import ModelArtifacts
+from app.service.replay_service import ReplayService
 from app.service.risk_service import RiskService
 
 app = FastAPI(title="Предиктор задержек наземного транспорта")
 
-# Дашборд может открываться отдельно (file://, другой порт) и стучаться в API кросс-доменно —
-# для MVP это ок, для прода стоит сузить allow_origins до конкретного адреса дашборда.
+# Дашборд в разработке живет на порту Vite и стучится сюда кросс-доменно.
+# Для прода сузить allow_origins до конкретного адреса.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Кадры — это массивы координат; без сжатия они занимают в разы больше.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
-_service = RiskService(ModelArtifacts.load())
+
+class Lazy:
+    """Артефакты грузятся при первом обращении, а не при импорте: сервис должен подниматься
+    и тогда, когда данные еще не сгенерированы, — и внятно об этом сообщать."""
+
+    def __init__(self, name: str, load: Callable, hint: str):
+        self._name, self._load, self._hint = name, load, hint
+        self._value = None
+        self._error: str | None = None
+
+    def get(self):
+        if self._value is None:
+            try:
+                self._value = self._load()
+                self._error = None
+            except Exception as e:  # noqa: BLE001 — причину показываем диспетчеру как есть
+                # не запоминаем неудачу навсегда: данные могут появиться, пока сервис работает
+                self._error = f"{type(e).__name__}: {e}"
+                raise HTTPException(503, detail={"what": self._name, "error": self._error,
+                                                 "hint": self._hint})
+        return self._value
+
+    @property
+    def ready(self) -> bool:
+        try:
+            self.get()
+            return True
+        except HTTPException:
+            return False
+
+    @property
+    def error(self) -> str | None:
+        return self._error
+
+
+_live = Lazy("live", lambda: RiskService(ModelArtifacts.load()),
+             "Нет обработанных данных или модели. Запустите ./run_all.sh")
+_replay = Lazy("replay", ReplayService.load,
+               "Нет кэша записанного дня. Запустите python -m app.replay_build")
+
+
+def _mode_index(mode: str | None) -> int | None:
+    if not mode or mode == "all":
+        return None
+    modes = _replay.get().day.modes
+    if mode not in modes:
+        raise HTTPException(400, detail=f"Неизвестный вид транспорта: {mode}")
+    return modes.index(mode)
 
 
 class Event(BaseModel):
@@ -45,28 +107,84 @@ class Context(BaseModel):
     holiday: int = 0
 
 
-@app.get("/health")
+@app.get("/api/health")
 def health():
-    return {"ok": True, "trips_in_schedule": _service.schedule_size}
+    return {
+        "ok": True,
+        "sources": {
+            "replay": {"ready": _replay.ready, "error": _replay.error},
+            "live": {"ready": _live.ready, "error": _live.error},
+        },
+        "tripsInSchedule": _live.get().schedule_size if _live.ready else 0,
+    }
 
 
-@app.post("/context")
-def set_context(c: Context):
-    _service.set_context(rain=c.rain, holiday=c.holiday)
-    return {"ok": True}
+@app.get("/api/model")
+def model_quality():
+    """Панель «Качество модели» — из reports/metrics.json, чтобы после переобучения дашборд
+    обновлялся сам. Подписи признаков тоже приходят с сервера: у фронтенда своей копии нет."""
+    path = REPORTS / "metrics.json"
+    if not path.exists():
+        raise HTTPException(503, detail={"what": "model", "error": "нет reports/metrics.json",
+                                         "hint": "Запустите python -m app.model.training"})
+    m = json.loads(path.read_text(encoding="utf-8"))
+    early, base = m["early_warning"][0], m["early_warning"][1]
+    fi = m.get("feature_importance", {})
+    labels = {**FEATURE_DESCRIPTIONS, **m.get("feature_descriptions", {})}
+    top = sorted(fi.items(), key=lambda kv: -kv[1])[:5]
+    peak = top[0][1] if top else 1.0
+    return {
+        "horizon": f"{HORIZON_MIN[0]}–{HORIZON_MIN[1]} мин",
+        "threshold": LATE_THRESHOLD_MIN,
+        "recall": 70,
+        "precision": round(early["precision_at_recall70"] * 100),
+        "baselinePrecision": round(base["precision_at_recall70"] * 100),
+        "prAuc": early["pr_auc"],
+        "baselinePrAuc": base["pr_auc"],
+        "testSize": m.get("n_test_early"),
+        "features": [{"key": k, "label": labels.get(k, k), "importance": v,
+                      "share": round(v / peak, 3) if peak else 0} for k, v in top],
+    }
 
 
-@app.post("/events")
+@app.get("/api/replay/day")
+def replay_day():
+    return _replay.get().day_info()
+
+
+@app.get("/api/replay/frame")
+def replay_frame(t: float, mode: str | None = None, min_level: int = 0, trip: int | None = None):
+    """Все, что дашборд показывает на момент t. Если передан trip — вместе с его карточкой."""
+    return _replay.get().frame(t, mode=_mode_index(mode), min_level=min_level, trip_id=trip)
+
+
+@app.get("/api/replay/timeline")
+def replay_timeline(mode: str | None = None):
+    return _replay.get().timeline(mode=_mode_index(mode))
+
+
+@app.get("/api/live/snapshot")
+def live_snapshot():
+    return _live.get().snapshot()
+
+
+@app.post("/api/events")
 def events(batch: list[Event]):
-    rows = [e.model_dump() for e in batch]
-    scored = _service.ingest_events(rows)
+    scored = _live.get().ingest_events([e.model_dump() for e in batch])
     return {"accepted": len(batch), "scored": scored}
 
 
-@app.get("/risk")
+@app.post("/api/context")
+def set_context(c: Context):
+    _live.get().set_context(rain=c.rain, holiday=c.holiday)
+    return {"ok": True}
+
+
+@app.get("/api/risk")
 def risk(limit: int = 50, min_risk: float = 0.0):
-    return _service.current_risk(limit=limit, min_risk=min_risk)
+    """Сырой срез прогнозов — для интеграций; дашборд берет готовый /api/live/snapshot."""
+    return _live.get().current_risk(limit=limit, min_risk=min_risk)
 
 
-if DASH.exists():
-    app.mount("/dashboard", StaticFiles(directory=str(DASH), html=True), name="dashboard")
+if WEB_DIST.exists():
+    app.mount("/", StaticFiles(directory=str(WEB_DIST), html=True), name="web")
