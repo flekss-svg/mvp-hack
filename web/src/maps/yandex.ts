@@ -1,95 +1,61 @@
-import type * as YMaps from '@yandex/ymaps3-types'
-
 export const MAP_KEY = (import.meta.env.VITE_YANDEX_MAPS_API_KEY ?? '').trim()
-export const MOSCOW: [number, number] = [37.6176, 55.7558]
-let pending: Promise<typeof YMaps> | null = null
+export const MOSCOW: [number, number] = [55.7558, 37.6176]
 
-type YandexStage = 'configuration' | 'script-load' | 'namespace' | 'sdk-ready' | 'map-create' | 'scheme-layer' | 'features-layer' | 'map-ready'
-const SAFE_SCRIPT_URL = 'https://api-maps.yandex.ru/v3/?lang=ru_RU'
-
-function safeErrorText(error: unknown): string {
-  // Never pass Error/Event/DOM objects to the console: they can contain script.src.
-  let message = error instanceof Error ? error.message
-    : typeof error === 'string' ? error
-      : error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
-        ? error.message : 'Unknown error (no message provided)'
-  if (MAP_KEY) {
-    for (const secret of [MAP_KEY, encodeURIComponent(MAP_KEY), encodeURI(MAP_KEY)]) {
-      message = message.split(secret).join('[REDACTED]')
-    }
-  }
-  return message.replace(/(apikey\s*[=:]\s*)[^\s&"'<>#]+/gi, '$1[REDACTED]')
+export interface YMaps21 {
+  ready: (callback: () => void) => void
+  Map: new (element: HTMLElement, state: { center: [number, number]; zoom: number }, options?: Record<string, unknown>) => YMap21
+  Placemark: new (coordinates: [number, number], properties?: Record<string, unknown>, options?: Record<string, unknown>) => YPlacemark21
+  Polyline: new (coordinates: [number, number][], properties?: Record<string, unknown>, options?: Record<string, unknown>) => YGeoObject21
+  templateLayoutFactory: { createClass: (template: string) => unknown }
 }
 
-export class YandexLoadError extends Error {
-  constructor(readonly stage: YandexStage, error: unknown) {
-    super(safeErrorText(error))
-    this.name = 'YandexLoadError'
-  }
+export interface YMap21 {
+  geoObjects: { add: (object: YGeoObject21) => void; remove: (object: YGeoObject21) => void }
+  setCenter: (center: [number, number], zoom?: number, options?: { duration?: number }) => void
+  getZoom: () => number
+  setZoom: (zoom: number, options?: { duration?: number }) => void
+  destroy: () => void
 }
 
-export function logYandex(stage: YandexStage, result: 'start' | 'success' | 'error', error?: unknown) {
-  if (!import.meta.env.DEV) return
-  const details = {
-    stage,
-    result,
-    hasApiKey: Boolean(MAP_KEY),
-    scriptUrl: SAFE_SCRIPT_URL,
-    hasWindowYmaps3: Boolean((window as Window & { ymaps3?: typeof YMaps }).ymaps3),
-    ...(error === undefined ? {} : { error: safeErrorText(error) }),
-  }
-  if (result === 'error') console.error('[Yandex Maps]', details)
-  else console.info('[Yandex Maps]', details)
+export interface YGeoObject21 {
+  geometry: { setCoordinates: (coordinates: [number, number] | [number, number][]) => void }
+  properties: { set: (values: Record<string, unknown>) => void }
+  options: { set: (values: Record<string, unknown>) => void }
+  events: { add: (event: string, callback: (event: { preventDefault: () => void }) => void) => void }
 }
 
-/** One SDK load shared across React StrictMode mounts. No key is stored in source. */
-export function loadYandex(): Promise<typeof YMaps> {
+export interface YPlacemark21 extends YGeoObject21 {}
+
+declare global { interface Window { ymaps?: YMaps21 } }
+
+let pending: Promise<YMaps21> | null = null
+const scriptSelector = 'script[data-yandex-maps="2.1"]'
+
+/** API 2.1 is loaded once, independently of React mounts. The key never reaches the UI or logs. */
+export function loadYandex(): Promise<YMaps21> {
   if (pending) return pending
-  pending = new Promise<typeof YMaps>((resolve, reject) => {
-    const script = document.createElement('script')
-    let settled = false
-    let stage: YandexStage = 'script-load'
-    const finish = (sdk?: typeof YMaps, error?: unknown) => {
-      if (settled) return
-      settled = true
-      window.clearTimeout(timeout)
-      script.onload = null
-      script.onerror = null
-      if (sdk) resolve(sdk)
+  pending = new Promise<YMaps21>((resolve, reject) => {
+    const finishReady = () => {
+      const sdk = window.ymaps
+      if (!sdk) { reject(new Error('Yandex Maps namespace is unavailable')); return }
+      sdk.ready(() => resolve(sdk))
+    }
+    const existing = document.querySelector<HTMLScriptElement>(scriptSelector)
+    if (existing) {
+      if (window.ymaps) finishReady()
       else {
-        const failure = new YandexLoadError(stage, error)
-        logYandex(stage, 'error', failure)
-        script.remove()
-        reject(failure)
+        existing.addEventListener('load', finishReady, { once: true })
+        existing.addEventListener('error', () => reject(new Error('Yandex Maps script failed to load')), { once: true })
       }
+      return
     }
-    const timeout = window.setTimeout(() => finish(undefined, new Error(`Timeout after 15000 ms at ${stage}`)), 15000)
+    const script = document.createElement('script')
+    script.dataset.yandexMaps = '2.1'
     script.async = true
-    script.src = `https://api-maps.yandex.ru/v3/?apikey=${encodeURIComponent(MAP_KEY)}&lang=ru_RU`
-    script.onerror = () => finish(undefined, new Error('script.onerror: script request failed; check Network and Content Security Policy'))
-    script.onload = async () => {
-      logYandex(stage, 'success')
-      try {
-        stage = 'namespace'
-        const sdk = (window as Window & { ymaps3?: typeof YMaps }).ymaps3
-        if (!sdk) throw new Error('Script loaded, but window.ymaps3 is absent')
-        logYandex(stage, 'success')
-        stage = 'sdk-ready'
-        logYandex(stage, 'start')
-        await sdk.ready
-        if (settled) return
-        logYandex(stage, 'success')
-        finish(sdk)
-      } catch (error) {
-        finish(undefined, error)
-      }
-    }
-    logYandex(stage, 'start')
-    try {
-      document.head.appendChild(script)
-    } catch (error) {
-      finish(undefined, error)
-    }
+    script.src = `https://api-maps.yandex.ru/2.1/?apikey=${encodeURIComponent(MAP_KEY)}&lang=ru_RU`
+    script.onload = finishReady
+    script.onerror = () => reject(new Error('Yandex Maps script failed to load'))
+    document.head.appendChild(script)
   }).catch((error: unknown) => {
     pending = null
     throw error

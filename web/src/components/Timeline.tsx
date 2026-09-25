@@ -63,8 +63,8 @@ export function Timeline({ data, t, onSeek, highColor }: Props) {
     })
 
     if (t !== null) {
-      ctx.fillStyle = cssVar('--ink')
-      ctx.fillRect(x(t) - 1, 0, 2, h - 12)
+      ctx.fillStyle = cssVar('--sel')
+      ctx.fillRect(x(t) - 1.5, 0, 3, h - 12)
     }
   }, [data, t, highColor])
 

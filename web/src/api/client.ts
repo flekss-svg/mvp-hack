@@ -1,8 +1,7 @@
 /** Единственное место во фронтенде, которое знает про HTTP и адреса эндпоинтов. */
 import type { ApiProblem, DayInfo, Frame, LiveSnapshot, ModelQuality, Timeline } from './types'
-import { demoApi } from './demo'
-
-export const DEMO_MODE = import.meta.env.VITE_USE_MOCKS === 'true'
+/** Enable only after the backend serves independent live telemetry. */
+export const LIVE_TELEMETRY_ENABLED = import.meta.env.VITE_LIVE_TELEMETRY === 'true'
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
 
@@ -54,4 +53,4 @@ const backendApi = {
   live: (signal?: AbortSignal) => get<LiveSnapshot>('/live/snapshot', undefined, signal),
 }
 
-export const api = DEMO_MODE ? demoApi : backendApi
+export const api = backendApi

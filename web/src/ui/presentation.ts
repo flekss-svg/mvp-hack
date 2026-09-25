@@ -23,6 +23,15 @@ export function forecastText(current?: number, future?: number) {
 }
 export const horizonText = (minutes?: number) => known(minutes) ? `Через ${amount(minutes)} мин` : 'Горизонт не передан'
 export const riskText = (risk?: number | null) => known(risk) ? `${Math.round(risk)}%` : 'Нет прогноза'
+export function expectedArrival(scheduled?: string, expected?: string, delay?: number) {
+  if (expected) return expected
+  if (!scheduled || !known(delay)) return undefined
+  const match = /^(\d{1,2}):(\d{2})$/.exec(scheduled.trim())
+  if (!match) return undefined
+  const minutes = (Number(match[1]) * 60 + Number(match[2]) + Math.round(delay)) % (24 * 60)
+  return `${String(Math.floor((minutes + 24 * 60) % (24 * 60) / 60)).padStart(2, '0')}:${String((minutes + 24 * 60) % 60).padStart(2, '0')}`
+}
+export const expectedDelayText = (delay?: number) => known(delay) ? delay <= 0 ? 'По графику или раньше' : `${amount(delay)} мин` : undefined
 export const ageSeconds = (updatedAt: number | null, now: number) => updatedAt === null ? null : Math.max(0, Math.floor((now - updatedAt) / 1000))
 export const updatedText = (updatedAt: number | null, now: number) => {
   const age = ageSeconds(updatedAt, now)

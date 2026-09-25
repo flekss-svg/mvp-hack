@@ -16,9 +16,14 @@ export interface Kpi {
 
 /** Optional presentation context; currently supplied by the synthetic source only. */
 export interface ForecastContext {
+  currentTime?: string
   forecastReason?: string
   problemSegment?: { from: string; to: string; index: number }
   forecastTime?: string
+  forecastStop?: string
+  scheduledArrival?: string
+  expectedArrival?: string
+  expectedDelay?: number
   averageSpeed?: number
   dwellMinutes?: number
 }
@@ -111,9 +116,23 @@ export interface LiveSnapshot {
   tracked: number
   kpi: Kpi[]
   alerts: Alert[]
-  /** Optional map/details supplied by the synthetic demo source only. */
-  map?: { day: DayInfo; frame: Frame }
+  /** Live stream adapter input; this must never be populated from replay responses. */
+  vehicles?: LiveVehicle[]
   trips?: Record<number, TripCard>
+}
+
+export interface LiveVehicle {
+  vehicleId: string | number
+  tripId?: string | number
+  route?: string
+  mode?: string
+  lat: number
+  lon: number
+  speed?: number
+  risk?: number | null
+  level?: RiskLevel | null
+  delay?: number | null
+  updatedAt?: string | number
 }
 
 export interface ModelQuality {

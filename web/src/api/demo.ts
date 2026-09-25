@@ -136,7 +136,6 @@ function live(): LiveSnapshot {
   const t = 450 + (((Date.now() - started) / 1000) * (10 / 60)) % 930
   const current = frame({ t })
   return { clock: current.clock, tracked: 24, kpi: current.kpi, alerts: current.alerts,
-    map: { day, frame: current },
     trips: Object.fromEntries(Array.from({ length: 24 }, (_, i) => {
       const v = vehicle(i, t)
       return [v.id, trip(v, t)]
