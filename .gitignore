@@ -19,3 +19,6 @@ web/playwright-report/
 web/tsconfig.tsbuildinfo
 
 .DS_Store
+
+submissions/
+
