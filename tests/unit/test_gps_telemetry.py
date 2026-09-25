@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from app.data_sources.gps_telemetry import decode_ndtp, pings_to_events, synth_pings
+from app.data_sources.gps_telemetry import pings_to_events, synth_pings
 from app.domain.schema import STOP_EVENT_COLUMNS
 
 
@@ -51,6 +51,5 @@ def test_too_few_known_stops_returns_empty_canonical_frame() -> None:
     assert list(result.columns) == STOP_EVENT_COLUMNS
 
 
-def test_ndtp_decoder_is_explicitly_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="спецификации NDTP"):
-        decode_ndtp(b"payload")
+# Разбор самого протокола NDTP (раньше здесь была заглушка decode_ndtp) теперь проверяется
+# отдельно, в tests/test_ndtp.py — там же приемник app/data_sources/ndtp_server.py.
