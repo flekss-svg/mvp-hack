@@ -8,7 +8,7 @@
 Дальше по конвейеру — отметки в события «прошла остановку» и в модель — он пока не передает.
 
 Запуск отдельно, чтобы смотреть пакеты в консоли:
-    python -m app.data_sources.ndtp_server
+    python -m app.service.ndtp_server
 Внутри API запускается автоматически (app/api.py), состояние — GET /api/live/units.
 """
 import asyncio

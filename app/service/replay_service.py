@@ -5,15 +5,67 @@
 (положение машин между остановками, уровни риска, KPI, список тревог, медленные перегоны,
 шкала времени), считается здесь.
 
-Данные берутся из кэша, который готовит app/replay_build.py.
+Данные берутся из кэша, который готовит app/replay_build.py. Формат кэша (ReplayDay) описан
+здесь, а не в сборщике: сервис не должен тянуть за собой обучение модели и sklearn.
 """
 import pickle
+from dataclasses import dataclass, field
 
 import numpy as np
 
 from app.config import (ALERT_LIMIT, REPLAY_CACHE, RISK_LEVELS, SLOW_SEG_MIN,
                         SLOW_SEG_WINDOW_MIN)
-from app.replay_build import KEY_SPAN, ReplayDay
+
+# Ключ сортировки событий: номер рейса * KEY_SPAN + время. Так все события одного рейса лежат
+# подряд и весь массив глобально отсортирован — положение всех машин на момент t находится
+# одним np.searchsorted, без цикла по рейсам (см. ReplayService.frame).
+KEY_SPAN = 10_000.0
+
+
+@dataclass
+class ReplayDay:
+    """Записанный день в форме, из которой кадр собирается векторно.
+
+    События всех рейсов склеены в плоские массивы (ev_*) и отсортированы по ключу
+    trip * KEY_SPAN + fact; границы рейсов — в trip_off.
+    """
+
+    date: str
+    dow: int
+    rain: dict
+    threshold: float
+    t_min: float
+    t_max: float
+
+    stop_lon: np.ndarray
+    stop_lat: np.ndarray
+    stop_names: list[str]
+
+    seg_a: np.ndarray
+    seg_b: np.ndarray
+
+    ev_stop: np.ndarray      # индекс остановки
+    ev_plan: np.ndarray      # плановое время, мин от начала служебных суток
+    ev_fact: np.ndarray      # фактическое время
+    ev_risk: np.ndarray      # риск 0..1, -1 если прогноз не выдавался
+    ev_target: np.ndarray    # индекс события, в котором прогноз проверяется; -1 если нет
+    ev_trip: np.ndarray      # индекс рейса
+    ev_key: np.ndarray       # trip * KEY_SPAN + fact
+
+    trip_off: np.ndarray     # (T+1,) границы событий каждого рейса
+    trip_route: np.ndarray   # индекс маршрута
+    trip_mode: np.ndarray    # индекс вида транспорта в modes
+
+    route_short: list[str]
+    route_long: list[str]
+    modes: list[str]
+
+    trav_t: np.ndarray       # прохождения перегонов, отсортированы по времени
+    trav_seg: np.ndarray
+    trav_excess: np.ndarray  # насколько дольше плана, мин
+
+    metrics: dict = field(default_factory=dict)
+
 
 HIGH = RISK_LEVELS[1]
 # Окно «тревога уже должна была подтвердиться»: смотрим прогнозы, выданные 20–30 минут назад.

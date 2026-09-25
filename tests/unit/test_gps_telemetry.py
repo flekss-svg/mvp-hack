@@ -49,7 +49,3 @@ def test_too_few_known_stops_returns_empty_canonical_frame() -> None:
     )
     assert result.empty
     assert list(result.columns) == STOP_EVENT_COLUMNS
-
-
-# Разбор самого протокола NDTP (раньше здесь была заглушка decode_ndtp) теперь проверяется
-# отдельно, в tests/test_ndtp.py — там же приемник app/data_sources/ndtp_server.py.

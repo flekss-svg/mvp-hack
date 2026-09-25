@@ -1,16 +1,13 @@
 """Прогон записанного дня через движок признаков и модель -> серверный кэш для API.
 
-Раньше результат прогона уезжал на фронтенд целиком (dashboard/data.json), и дашборд сам
-распаковывал рейсы, интерполировал положение машин и считал KPI. Теперь результат остается
-на сервере: app/service/replay_service.py поднимает этот кэш и отдает фронтенду уже готовые
-кадры (GET /api/replay/frame), а фронтенд ничего не пересчитывает.
+Результат остается на сервере: app/service/replay_service.py поднимает этот кэш и отдает
+фронтенду уже готовые кадры (GET /api/replay/frame), фронтенд ничего не пересчитывает.
 
 Запуск:
     python -m app.replay_build [YYYY-MM-DD]
 """
 import pickle
 import sys
-from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -20,56 +17,7 @@ from app.data_sources import processed_repository as repo
 from app.engine.stream_state import StreamState, run_day
 from app.model.artifacts import ModelArtifacts
 from app.model.training import day_context
-
-# Ключ сортировки событий: номер рейса * KEY_SPAN + время. Так все события одного рейса лежат
-# подряд и весь массив глобально отсортирован — положение всех машин на момент t находится
-# одним np.searchsorted, без цикла по рейсам (см. replay_service.frame).
-KEY_SPAN = 10_000.0
-
-
-@dataclass
-class ReplayDay:
-    """Записанный день в форме, из которой кадр собирается векторно.
-
-    События всех рейсов склеены в плоские массивы (ev_*) и отсортированы по ключу
-    trip * KEY_SPAN + fact; границы рейсов — в trip_off.
-    """
-
-    date: str
-    dow: int
-    rain: dict
-    threshold: float
-    t_min: float
-    t_max: float
-
-    stop_lon: np.ndarray
-    stop_lat: np.ndarray
-    stop_names: list[str]
-
-    seg_a: np.ndarray
-    seg_b: np.ndarray
-
-    ev_stop: np.ndarray      # индекс остановки
-    ev_plan: np.ndarray      # плановое время, мин от начала служебных суток
-    ev_fact: np.ndarray      # фактическое время
-    ev_risk: np.ndarray      # риск 0..1, -1 если прогноз не выдавался
-    ev_target: np.ndarray    # индекс события, в котором прогноз проверяется; -1 если нет
-    ev_trip: np.ndarray      # индекс рейса
-    ev_key: np.ndarray       # trip * KEY_SPAN + fact
-
-    trip_off: np.ndarray     # (T+1,) границы событий каждого рейса
-    trip_route: np.ndarray   # индекс маршрута
-    trip_mode: np.ndarray    # индекс вида транспорта в modes
-
-    route_short: list[str]
-    route_long: list[str]
-    modes: list[str]
-
-    trav_t: np.ndarray       # прохождения перегонов, отсортированы по времени
-    trav_seg: np.ndarray
-    trav_excess: np.ndarray  # насколько дольше плана, мин
-
-    metrics: dict = field(default_factory=dict)
+from app.service.replay_service import KEY_SPAN, ReplayDay
 
 
 def _pick_day(date: str | None):

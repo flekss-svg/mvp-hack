@@ -63,3 +63,10 @@ def test_live_write_and_read_endpoints(client: TestClient, live_service) -> None
     assert live_service.context == {"rain": 0.7, "holiday": 1}
     assert client.get("/api/live/snapshot").status_code == 200
     assert client.get("/api/risk", params={"limit": 5, "min_risk": 0.5}).json()[0]["risk"] == 0.8
+
+
+def test_ndtp_units_endpoint(client: TestClient) -> None:
+    units = client.get("/api/live/units")
+    assert units.status_code == 200
+    assert {"listening", "port", "stats", "units"} <= units.json().keys()
+    assert "ndtp" in client.get("/api/health").json()["sources"]

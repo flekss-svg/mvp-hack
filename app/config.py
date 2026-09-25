@@ -40,7 +40,7 @@ SLOW_SEG_MIN = (1.0, 2.5)
 SLOW_SEG_WINDOW_MIN = 15.0   # за какое окно назад усредняем прохождения перегона
 ALERT_LIMIT = 40             # сколько рейсов показываем в списке тревог
 
-# Приемник NDTP (data_sources/ndtp_server.py). Порт — как в примере из спецификации эмулятора.
+# Приемник NDTP (service/ndtp_server.py). Порт — как в примере из спецификации эмулятора.
 # 0.0.0.0: эмулятор в Docker подключается с другого сетевого интерфейса; на общей сети сузить.
 NDTP_HOST = os.environ.get("NDTP_HOST", "0.0.0.0")
 NDTP_PORT = int(os.environ.get("NDTP_PORT", "9201"))

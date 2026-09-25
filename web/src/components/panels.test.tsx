@@ -1,20 +1,21 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { alert, jsonResponse, model, trip } from '../test/fixtures'
 import { AlertList } from './AlertList'
 import { Header } from './Header'
 import { Legend } from './Legend'
+import { ModelPanel } from './ModelPanel'
+import { Segmented } from './Segmented'
 import { TripPanel } from './TripPanel'
 
-describe('dashboard panels', () => {
-  it('renders header KPI and legend', () => {
+afterEach(() => vi.restoreAllMocks())
+
+describe('Header and Legend', () => {
+  it('render KPI and the late threshold', () => {
     render(
       <>
-        <Header
-          clock="08:05"
-          subtitle="Тестовый день"
-          kpi={[{ key: 'high', label: 'риск', value: '2', tone: 'high' }]}
-        />
+        <Header clock="08:05" subtitle="Тестовый день" kpi={[{ key: 'high', label: 'риск', value: '2', tone: 'high' }]} />
         <Legend threshold={3} />
       </>,
     )
@@ -22,49 +23,77 @@ describe('dashboard panels', () => {
     expect(screen.getByText('2')).toBeVisible()
     expect(screen.getByText(/3 мин/)).toBeVisible()
   })
+})
 
-  it('selects an alert and closes a trip card', async () => {
+describe('Segmented', () => {
+  it('marks the selected option and reports clicks', async () => {
+    const onChange = vi.fn()
+    const options = [{ value: 'all', label: 'Все' }, { value: 'bus', label: 'Автобусы' }]
+    render(<Segmented label="Transport" value="all" onChange={onChange} options={options} />)
+
+    expect(screen.getByRole('button', { name: 'Все' })).toHaveAttribute('aria-pressed', 'true')
+    await userEvent.click(screen.getByRole('button', { name: 'Автобусы' }))
+    expect(onChange).toHaveBeenCalledWith('bus')
+  })
+})
+
+describe('AlertList', () => {
+  it('selects an alert', async () => {
     const onSelect = vi.fn()
-    const onClose = vi.fn()
-    render(
-      <>
-        <AlertList
-          title="Тревоги"
-          alerts={[{
-            tripId: 1,
-            route: '42',
-            mode: 'bus',
-            dest: 'Конечная',
-            stop: 'Начальная',
-            delay: 1,
-            risk: 80,
-          }]}
-          selected={null}
-          onSelect={onSelect}
-          empty="Пусто"
-        />
-        <TripPanel
-          trip={{
-            found: true,
-            onLine: true,
-            route: '42',
-            routeName: 'Тестовый маршрут',
-            mode: 'bus',
-            stop: 'Начальная',
-            delay: 1,
-            risk: 80,
-            level: 2,
-            outcome: null,
-            next: [],
-          }}
-          onClose={onClose}
-        />
-      </>,
-    )
-
+    render(<AlertList title="Тревоги" alerts={[alert]} selected={null} onSelect={onSelect} empty="Пусто" />)
     await userEvent.click(screen.getByRole('button', { name: /Конечная/ }))
     expect(onSelect).toHaveBeenCalledWith(1)
+  })
+
+  it('shows the empty message', () => {
+    render(<AlertList title="Тревоги" alerts={[]} selected={null} empty="Пусто" />)
+    expect(screen.getByText('Пусто')).toBeVisible()
+  })
+})
+
+describe('TripPanel', () => {
+  it('closes', async () => {
+    const onClose = vi.fn()
+    render(<TripPanel trip={trip} onClose={onClose} />)
     await userEvent.click(screen.getByRole('button', { name: /закрыть/i }))
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('renders the offline state', () => {
+    render(<TripPanel trip={{ ...trip, onLine: false }} onClose={vi.fn()} />)
+    expect(screen.getByText('Рейс сейчас не на линии.')).toBeVisible()
+  })
+
+  it('renders a finished forecast with its outcome and next stops', () => {
+    const finished = {
+      ...trip,
+      delay: -1,
+      risk: null,
+      level: 3 as const,
+      outcome: { late: false, delay: 1.5 },
+      next: [{ stop: 'Конечная', plan: '08:30' }],
+    }
+    render(<TripPanel trip={finished} onClose={vi.fn()} />)
+    expect(screen.getByText('рейс скоро завершится')).toBeVisible()
+    expect(screen.getByText(/успел.*1\.5 мин/)).toBeVisible()
+    expect(screen.getByText('08:30')).toBeVisible()
+  })
+})
+
+describe('ModelPanel', () => {
+  it('loads and renders model quality', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(model))
+    render(<ModelPanel />)
+
+    expect(screen.getByText('Загрузка метрик…')).toBeVisible()
+    expect(await screen.findByRole('heading', { name: 'Качество модели' })).toBeVisible()
+    expect(screen.getByText('Текущее опоздание')).toBeVisible()
+    expect(screen.getByText('33.7')).toBeVisible()
+  })
+
+  it('shows an API error', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ detail: 'Метрики недоступны' }, 503))
+    render(<ModelPanel />)
+    expect(await screen.findByText('Метрики недоступны')).toBeVisible()
   })
 })

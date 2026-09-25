@@ -17,7 +17,7 @@
     POST /api/events              — пачка событий «машина прошла остановку»
     POST /api/context             — погода/праздник на сегодня
 
-Вместе с API поднимается TCP-приемник NDTP (data_sources/ndtp_server.py, порт из config.py).
+Вместе с API поднимается TCP-приемник NDTP (service/ndtp_server.py, порт из config.py).
 
 Собранный фронтенд (web/dist) отдается статикой в корне — сервис и дашборд поднимаются
 одной командой.
@@ -34,7 +34,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.config import HORIZON_MIN, LATE_THRESHOLD_MIN, REPORTS, WEB_DIST
-from app.data_sources.ndtp_server import NdtpServer
+from app.service.ndtp_server import NdtpServer
 from app.engine.feature_definitions import FEATURE_DESCRIPTIONS
 from app.model.artifacts import ModelArtifacts
 from app.service.replay_service import ReplayService

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { DayInfo, Frame, Timeline as TimelineData } from '../api/types'
+import { day, frame, timeline } from '../test/fixtures'
 import { MapCanvas } from './MapCanvas'
 import { Timeline } from './Timeline'
 
@@ -60,14 +60,7 @@ beforeEach(() => {
 describe('Timeline canvas', () => {
   it('draws data and seeks with pointer interaction', () => {
     const onSeek = vi.fn()
-    const data: TimelineData = {
-      tMin: 400,
-      tMax: 600,
-      bins: [{ t: 400, high: 2 }, { t: 500, high: 4 }],
-      ticks: [{ t: 400, label: '06:40' }, { t: 500, label: '08:20' }],
-      rain: { level: 1, start: 450, end: 480 },
-    }
-    render(<Timeline data={data} t={500} onSeek={onSeek} />)
+    render(<Timeline data={timeline} t={500} onSeek={onSeek} />)
     const canvas = screen.getByLabelText('Шкала времени: число машин с высоким риском')
 
     expect(context.fillRect).toHaveBeenCalled()
@@ -83,39 +76,6 @@ describe('Timeline canvas', () => {
 describe('MapCanvas', () => {
   it('draws network and vehicles, selects, pans and zooms', () => {
     const onSelect = vi.fn()
-    const day: DayInfo = {
-      date: '2026-09-03',
-      dow: 3,
-      rain: { level: 0, start: 0, end: 0 },
-      threshold: 3,
-      tMin: 400,
-      tMax: 600,
-      horizonLabel: '10–15 мин',
-      riskLevels: { mid: 0.3, high: 0.6 },
-      modes: [{ id: 0, key: 'bus' }],
-      trips: 1,
-      network: {
-        stops: [[37.60, 55.75], [37.62, 55.75]],
-        segments: [[0, 1]],
-      },
-    }
-    const frame: Frame = {
-      t: 500,
-      clock: '08:20',
-      raining: false,
-      kpi: [],
-      vehicles: {
-        id: [7],
-        lon: [37.61],
-        lat: [55.75],
-        level: [2],
-        risk: [80],
-        late: [1],
-      },
-      slowSegments: [[0, 1, 3]],
-      alerts: [],
-      trip: null,
-    }
     render(<MapCanvas day={day} frame={frame} selected={7} onSelect={onSelect} />)
     const canvas = screen.getByLabelText('Карта маршрутов и машин')
 

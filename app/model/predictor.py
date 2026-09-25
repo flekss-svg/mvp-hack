@@ -1,6 +1,6 @@
 """Обёртка над ML-моделью предиктора задержек.
 
-Изолирует остальной код (service/, dashboard_export.py, model/training.py) от конкретной
+Изолирует остальной код (service/, replay_build.py, model/training.py) от конкретной
 библиотеки — сейчас CatBoost. Если завтра модель поменяется (другой градиентный бустинг,
 нейросеть), меняется только этот файл: у DelayPredictor остается тот же интерфейс
 (load/save/fit/predict_risk/feature_importance).

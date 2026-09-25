@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import struct
+
 import numpy as np
 
-from app.replay_build import KEY_SPAN, ReplayDay
+from app.service.replay_service import KEY_SPAN, ReplayDay
 
 
 def make_replay_day() -> ReplayDay:
@@ -59,3 +61,36 @@ class FakeLiveService:
         if not limit or min_risk > 0.8:
             return []
         return [{"trip_id": "trip-1", "risk": 0.8}]
+
+
+# ---------- NDTP: пакеты собираются по спецификации эмулятора, независимо от боевого кода ----------
+
+def crc16_reference(data: bytes) -> int:
+    """CRC-16/Modbus побитово, без таблицы — сверка с табличной реализацией в ndtp_protocol."""
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0xA001 if crc & 1 else crc >> 1
+    return crc
+
+
+def ndtp_frame(unit_id: int, service_id: int, nph_type: int, body: bytes, crc_delta: int = 0) -> bytes:
+    payload = struct.pack("<HHHI", service_id, nph_type, 1, 1) + body
+    crc = (crc16_reference(payload) + crc_delta) & 0xFFFF
+    swapped = ((crc & 0xFF) << 8) | (crc >> 8)
+    return struct.pack("<HHHHBIH", 0x7E7E, len(payload), 0, swapped, 0x02, unit_id, 0) + payload
+
+
+def ndtp_handshake(unit_id: int) -> bytes:
+    return ndtp_frame(unit_id, 0, 100, struct.pack("<HHHIII", 6, 2, 0, unit_id, 65535, 0))
+
+
+def ndtp_realtime(unit_id: int, lat: float = 55.7551234, lon: float = 37.617321, *, north=True,
+                  east=True, valid=True, speed=40, course=90, ts=1_780_000_000, crc_delta=0) -> bytes:
+    dop = (north << 5) | (east << 6) | (valid << 7)
+    nav = struct.pack("<IIIBBHHHHHBB", ts, round(abs(lon) * 1e7), round(abs(lat) * 1e7), dop, 200,
+                      speed, speed + 5, course, 0, 150, 12, 10)
+    # после навигации — ячейка ДУТ (type 8): приемник должен ее проигнорировать
+    fuel = bytes([8, 0]) + struct.pack("<BHHB", 0, 300, 120, 20)
+    return ndtp_frame(unit_id, 1, 101, bytes([0, 0]) + nav + fuel, crc_delta)

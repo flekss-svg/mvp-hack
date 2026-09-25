@@ -7,7 +7,7 @@
 
 Использует только canonical-слои: data_sources (доступ к данным), engine (признаки),
 model.predictor/evaluation (обучение и оценка). Не знает деталей формата CSV data.mos.ru
-и не дублирует код загрузки признаков с service/risk_service.py или dashboard_export.py.
+и не дублирует код загрузки признаков с service/risk_service.py или replay_build.py.
 """
 import json
 import pickle
