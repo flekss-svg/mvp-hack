@@ -1,0 +1,56 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Install frontend dependencies
+        run: npm --prefix web ci
+
+      - name: Install Playwright Chromium
+        run: npx --prefix web playwright install --with-deps chromium
+
+      - name: Backend unit tests
+        run: |
+          python -m coverage erase
+          python -m pytest tests/unit -m unit --cov=app --cov-report=
+
+      - name: Backend integration and coverage gate
+        run: python -m pytest tests/integration -m integration --cov=app --cov-append --cov-report=term-missing --cov-fail-under=80
+
+      - name: Frontend tests and coverage gate
+        run: npm --prefix web run test:run
+
+      - name: Production build
+        run: npm --prefix web run build
+
+      - name: Full-stack smoke/E2E
+        run: npm --prefix web run test:e2e
