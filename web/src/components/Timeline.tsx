@@ -13,7 +13,6 @@ const cssVar = (name: string) =>
 /** Сколько машин с высоким риском в каждый момент дня. Счет ведет сервер, здесь — отрисовка. */
 export function Timeline({ data, t, onSeek }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
-  const dragging = useRef(false)
 
   const draw = useCallback(() => {
     const cv = ref.current
@@ -48,12 +47,16 @@ export function Timeline({ data, t, onSeek }: Props) {
     }
 
     ctx.fillStyle = cssVar('--muted')
-    ctx.font = '11px Onest, system-ui'
+    ctx.font = '11px system-ui, sans-serif'
     const every = w < 600 ? 4 : 2
+    let lastRight = -8
     data.ticks.forEach((tick, i) => {
       if (i % every) return
       const label = ctx.measureText(tick.label).width
-      ctx.fillText(tick.label, Math.min(Math.max(x(tick.t) - label / 2, 0), w - label), h - 1)
+      const left = Math.min(Math.max(x(tick.t) - label / 2, 0), w - label)
+      if (left < lastRight + 8) return
+      ctx.fillText(tick.label, left, h - 1)
+      lastRight = left + label
     })
 
     if (t !== null) {
@@ -64,30 +67,18 @@ export function Timeline({ data, t, onSeek }: Props) {
 
   useEffect(() => {
     draw()
-    window.addEventListener('resize', draw)
-    return () => window.removeEventListener('resize', draw)
+    const observer = new ResizeObserver(draw)
+    if (ref.current) observer.observe(ref.current)
+    return () => observer.disconnect()
   }, [draw])
-
-  const seekFrom = (clientX: number, target: HTMLCanvasElement) => {
-    if (!data) return
-    const r = target.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (clientX - r.left) / r.width))
-    onSeek(data.tMin + ratio * (data.tMax - data.tMin))
-  }
 
   return (
     <div className="timeline">
-      <canvas
-        ref={ref}
-        aria-label="Шкала времени: число машин с высоким риском"
-        onPointerDown={(e) => {
-          dragging.current = true
-          e.currentTarget.setPointerCapture(e.pointerId)
-          seekFrom(e.clientX, e.currentTarget)
-        }}
-        onPointerMove={(e) => dragging.current && seekFrom(e.clientX, e.currentTarget)}
-        onPointerUp={() => (dragging.current = false)}
-      />
+      <canvas ref={ref} aria-hidden="true" />
+      <input type="range" aria-label="Время записанного дня" min={data?.tMin ?? 0} max={data?.tMax ?? 1}
+        step={0.25} value={t ?? data?.tMin ?? 0} disabled={!data}
+        aria-valuetext={t === null ? 'Нет данных' : `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`}
+        onChange={(e) => onSeek(Number(e.target.value))} />
     </div>
   )
 }

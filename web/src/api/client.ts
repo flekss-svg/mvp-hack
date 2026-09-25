@@ -1,5 +1,8 @@
 /** Единственное место во фронтенде, которое знает про HTTP и адреса эндпоинтов. */
 import type { ApiProblem, DayInfo, Frame, LiveSnapshot, ModelQuality, Timeline } from './types'
+import { demoApi } from './demo'
+
+export const DEMO_MODE = import.meta.env.VITE_USE_MOCKS === 'true'
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
 
@@ -18,7 +21,8 @@ async function get<T>(path: string, params?: Record<string, string | number | un
     if (v !== undefined && v !== null && v !== '') query.set(k, String(v))
   }
   const qs = query.toString()
-  const res = await fetch(`${BASE}/api${path}${qs ? `?${qs}` : ''}`, { signal })
+  const requestSignal = AbortSignal.any([AbortSignal.timeout(10000), ...(signal ? [signal] : [])])
+  const res = await fetch(`${BASE}/api${path}${qs ? `?${qs}` : ''}`, { signal: requestSignal })
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     const detail = body?.detail
@@ -28,7 +32,7 @@ async function get<T>(path: string, params?: Record<string, string | number | un
   return res.json() as Promise<T>
 }
 
-export const api = {
+const backendApi = {
   model: (signal?: AbortSignal) => get<ModelQuality>('/model', undefined, signal),
   day: (signal?: AbortSignal) => get<DayInfo>('/replay/day', undefined, signal),
   frame: (
@@ -49,3 +53,5 @@ export const api = {
     get<Timeline>('/replay/timeline', { mode: mode === 'all' ? undefined : mode }, signal),
   live: (signal?: AbortSignal) => get<LiveSnapshot>('/live/snapshot', undefined, signal),
 }
+
+export const api = DEMO_MODE ? demoApi : backendApi

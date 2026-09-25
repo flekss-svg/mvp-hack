@@ -6,6 +6,8 @@ interface Props {
   frame: Frame | null
   selected: number | null
   onSelect: (tripId: number | null) => void
+  focusToken?: number
+  focusReady?: boolean
 }
 
 const LEVEL_VAR = ['--low', '--mid', '--high', '--muted']
@@ -19,12 +21,14 @@ const cssVar = (name: string) =>
  * Карта сети и машин. Рисует то, что пришло в кадре: координаты, уровни риска и медленные
  * перегоны считает сервер, здесь остаются только проекция, панорама и зум.
  */
-export function MapCanvas({ day, frame, selected, onSelect }: Props) {
+export function MapCanvas({ day, frame, selected, onSelect, focusToken = 0, focusReady = true }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
   const view = useRef({ cx: 0, cy: 0, k: 1, ready: false })
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: boolean } | null>(null)
   const latest = useRef(frame)
   latest.current = frame
+  const focused = useRef('')
+  const autoFit = useRef(true)
 
   const stops = day.network.stops
   // Меркатор на таком масштабе не нужен — достаточно сжать долготу по широте города.
@@ -71,7 +75,7 @@ export function MapCanvas({ day, frame, selected, onSelect }: Props) {
 
     // сеть маршрутов
     ctx.strokeStyle = cssVar('--net')
-    ctx.lineWidth = 1.2
+    ctx.lineWidth = 3
     ctx.beginPath()
     for (const [a, b] of day.network.segments) {
       const p = project(stops[a][0], stops[a][1], w, h)
@@ -101,7 +105,7 @@ export function MapCanvas({ day, frame, selected, onSelect }: Props) {
 
     // машины
     const v = f.vehicles
-    const r = Math.max(2.5, Math.min(6, view.current.k / 900))
+    const r = Math.max(5, Math.min(8, view.current.k / 900))
     const ink = cssVar('--ink')
     for (const level of DRAW_ORDER) {
       ctx.fillStyle = cssVar(LEVEL_VAR[level])
@@ -110,12 +114,40 @@ export function MapCanvas({ day, frame, selected, onSelect }: Props) {
         const [x, y] = project(v.lon[i], v.lat[i], w, h)
         if (x < -10 || y < -10 || x > w + 10 || y > h + 10) continue
         ctx.beginPath()
-        ctx.arc(x, y, r, 0, Math.PI * 2)
+        if (level === 2) {
+          ctx.moveTo(x, y - r - 3)
+          ctx.lineTo(x + r + 3, y)
+          ctx.lineTo(x, y + r + 3)
+          ctx.lineTo(x - r - 3, y)
+          ctx.closePath()
+        } else if (level === 3) ctx.rect(x - r, y - r, r * 2, r * 2)
+        else ctx.arc(x, y, r, 0, Math.PI * 2)
         ctx.fill()
+        ctx.strokeStyle = '#fff'
+        ctx.lineWidth = 2
+        ctx.stroke()
         if (v.late[i]) {
           ctx.strokeStyle = ink
           ctx.lineWidth = 1.5
           ctx.stroke()
+        }
+        if (level === 2) {
+          ctx.fillStyle = '#fff'
+          ctx.font = 'bold 10px system-ui'
+          ctx.textAlign = 'center'
+          ctx.fillText('!', x, y + 3)
+          ctx.fillStyle = cssVar(LEVEL_VAR[level])
+        }
+        if (v.route?.[i] || selected === v.id[i]) {
+          const label = `${v.route?.[i] ?? v.id[i]}`
+          ctx.font = '600 11px system-ui'
+          ctx.textAlign = 'center'
+          const width = ctx.measureText(label).width + 10
+          ctx.fillStyle = '#fff'
+          ctx.fillRect(x - width / 2, y + r + 5, width, 17)
+          ctx.fillStyle = ink
+          ctx.fillText(label, x, y + r + 17)
+          ctx.fillStyle = cssVar(LEVEL_VAR[level])
         }
       }
     }
@@ -132,14 +164,27 @@ export function MapCanvas({ day, frame, selected, onSelect }: Props) {
   }, [day, fit, project, selected, stops])
 
   useEffect(() => {
+    const target = `${selected}:${focusToken}`
+    const v = frame?.vehicles
+    const idx = v?.id.indexOf(selected ?? -1) ?? -1
+    if (focusReady && v && idx >= 0 && focused.current !== target) {
+      if (!view.current.ready) fit()
+      focused.current = target
+      autoFit.current = false
+      view.current.cx = v.lon[idx] * kx.current
+      view.current.cy = -v.lat[idx]
+      view.current.k = Math.max(view.current.k, 9000)
+    }
+    if (selected === null) focused.current = ''
     draw()
-  }, [draw, frame])
+  }, [draw, frame, selected, focusToken, focusReady, fit])
 
   useEffect(() => {
-    const onResize = () => draw()
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [draw])
+    const onResize = () => { if (autoFit.current) fit(); draw() }
+    const observer = new ResizeObserver(onResize)
+    if (ref.current) observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [draw, fit])
 
   const zoomAt = (factor: number, x: number, y: number) => {
     const cv = ref.current
@@ -147,6 +192,7 @@ export function MapCanvas({ day, frame, selected, onSelect }: Props) {
     const w = cv.clientWidth
     const h = cv.clientHeight
     const v = view.current
+    autoFit.current = false
     const wx = v.cx + (x - w / 2) / v.k
     const wy = v.cy + (y - h / 2) / v.k
     v.k *= factor
@@ -188,7 +234,7 @@ export function MapCanvas({ day, frame, selected, onSelect }: Props) {
           if (!d) return
           const dx = e.clientX - d.x
           const dy = e.clientY - d.y
-          if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true
+          if (Math.abs(dx) + Math.abs(dy) > 3) { d.moved = true; autoFit.current = false }
           view.current.cx = d.cx - dx / view.current.k
           view.current.cy = d.cy - dy / view.current.k
           draw()
@@ -200,15 +246,19 @@ export function MapCanvas({ day, frame, selected, onSelect }: Props) {
           const r = e.currentTarget.getBoundingClientRect()
           pick(e.clientX - r.left, e.clientY - r.top)
         }}
+        onPointerCancel={() => { drag.current = null }}
         onWheel={(e) => {
           const r = e.currentTarget.getBoundingClientRect()
           zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, e.clientX - r.left, e.clientY - r.top)
         }}
       />
+      <div className="sr-only vehicle-options" aria-label="Транспорт на схеме">
+        {frame?.vehicles.id.map((id, i) => <button key={id} onClick={() => onSelect(id)}>ТС {id}, риск {frame.vehicles.level[i] === 3 ? 'не определён' : `${frame.vehicles.risk[i]}%`}</button>)}
+      </div>
       <div className="map-zoom">
         <button onClick={() => zoomAt(1.4, (ref.current?.clientWidth ?? 0) / 2, (ref.current?.clientHeight ?? 0) / 2)} aria-label="Приблизить">+</button>
         <button onClick={() => zoomAt(1 / 1.4, (ref.current?.clientWidth ?? 0) / 2, (ref.current?.clientHeight ?? 0) / 2)} aria-label="Отдалить">−</button>
-        <button onClick={() => { fit(); draw() }} aria-label="Показать всё">⤢</button>
+        <button onClick={() => { autoFit.current = true; fit(); draw() }} aria-label="Показать всё">⤢</button>
       </div>
     </div>
   )

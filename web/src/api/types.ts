@@ -22,6 +22,8 @@ export interface Alert {
   stop: string
   delay: number
   risk: number
+  forecastMinutes?: number
+  forecastDelay?: number
 }
 
 export interface TripCard {
@@ -36,6 +38,9 @@ export interface TripCard {
   level?: RiskLevel
   outcome?: { late: boolean; delay: number } | null
   next?: { stop: string; plan: string }[]
+  tripId?: number
+  forecastMinutes?: number
+  forecastDelay?: number
 }
 
 export interface DayInfo {
@@ -65,6 +70,8 @@ export interface Vehicles {
   level: RiskLevel[]
   risk: number[]
   late: number[]
+  route?: string[]
+  mode?: string[]
 }
 
 /** [индекс перегона, ступень (0 медленно · 1 сильно), среднее превышение в минутах] */
@@ -94,6 +101,9 @@ export interface LiveSnapshot {
   tracked: number
   kpi: Kpi[]
   alerts: Alert[]
+  /** Optional map/details supplied by the synthetic demo source only. */
+  map?: { day: DayInfo; frame: Frame }
+  trips?: Record<number, TripCard>
 }
 
 export interface ModelQuality {

@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError } from '../api/client'
 
 export interface Resource<T> {
   data: T | null
   error: ApiError | null
   loading: boolean
+  updatedAt: number | null
 }
 
 /**
@@ -16,15 +17,17 @@ export function useResource<T>(
   load: (signal: AbortSignal) => Promise<T>,
   deps: unknown[],
   options: { pollMs?: number; enabled?: boolean } = {},
-): Resource<T> {
+): Resource<T> & { refresh: () => void } {
   const { pollMs, enabled = true } = options
-  const [state, setState] = useState<Resource<T>>({ data: null, error: null, loading: enabled })
+  const [state, setState] = useState<Resource<T>>({ data: null, error: null, loading: enabled, updatedAt: null })
+  const [revision, setRevision] = useState(0)
+  const refresh = useCallback(() => setRevision((v) => v + 1), [])
   const loadRef = useRef(load)
   loadRef.current = load
 
   useEffect(() => {
     if (!enabled) {
-      setState({ data: null, error: null, loading: false })
+      setState({ data: null, error: null, loading: false, updatedAt: null })
       return
     }
     const ctrl = new AbortController()
@@ -34,11 +37,11 @@ export function useResource<T>(
     const run = async () => {
       try {
         const data = await loadRef.current(ctrl.signal)
-        if (!stopped) setState({ data, error: null, loading: false })
+        if (!stopped) setState({ data, error: null, loading: false, updatedAt: Date.now() })
       } catch (e) {
         if (ctrl.signal.aborted || stopped) return
         const error = e instanceof ApiError ? e : new ApiError((e as Error).message)
-        setState((prev) => ({ data: prev.data, error, loading: false }))
+        setState((prev) => ({ ...prev, error, loading: false }))
       }
       if (!stopped && pollMs) timer = window.setTimeout(run, pollMs)
     }
@@ -51,7 +54,7 @@ export function useResource<T>(
       window.clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [...deps, pollMs, enabled])
+  }, [...deps, pollMs, enabled, revision])
 
-  return state
+  return { ...state, refresh }
 }

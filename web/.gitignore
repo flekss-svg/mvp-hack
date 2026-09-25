@@ -2,3 +2,7 @@ node_modules/
 dist/
 *.tsbuildinfo
 *.local
+.env
+.env.*
+!.env.example
+.checks/
