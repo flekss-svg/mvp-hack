@@ -15,13 +15,13 @@ import random
 
 import pandas as pd
 
-from app.config import HOLIDAYS, LATE_THRESHOLD_MIN, MODELS, RANDOM_SEED, REPORTS
+from app.config import HOLIDAYS, LATE_THRESHOLD_MIN, MODELS, PROC, RANDOM_SEED, REPORTS
 from app.data_sources import processed_repository as repo
 from app.domain.schema import DayContext
 from app.engine.feature_definitions import FEATURE_DESCRIPTIONS
 from app.engine.stream_state import StreamState, build_hist_profile, load_schedule_index, run_day
-from app.model.evaluation import metrics, risk_levels
-from app.model.predictor import DelayPredictor
+from app.model.evaluation import baselines, mae_by_bucket, mae_report, metrics, risk_levels
+from app.model.predictor import DelayPredictor, DelayRegressor
 
 
 def day_context(date, meta_row) -> DayContext:
@@ -51,6 +51,22 @@ def collect(files, schedule, hist, route_mode, meta, sample, rng):
     return pd.concat(Xs, ignore_index=True), pd.concat(Ms, ignore_index=True)
 
 
+REG_FIT_ROWS = 600_000   # сколько строк берем на обучение регрессии (ограничение по памяти)
+
+
+def cached(name, files, schedule, hist, route_mode, meta, sample, rng):
+    """Признаки считаются долго, поэтому результат прогона потока кладем рядом с данными.
+    Удалите data/processed/features_*.parquet, чтобы пересчитать."""
+    fx, fm = PROC / f"features_{name}_X.parquet", PROC / f"features_{name}_M.parquet"
+    if fx.exists() and fm.exists():
+        print(f"  берем из кэша: {fx.name}")
+        return pd.read_parquet(fx), pd.read_parquet(fm)
+    X, M = collect(files, schedule, hist, route_mode, meta, sample, rng)
+    X.to_parquet(fx, index=False)
+    M.to_parquet(fm, index=False)
+    return X, M
+
+
 def main():
     rng = random.Random(RANDOM_SEED)
     files = repo.list_fact_days()
@@ -64,12 +80,12 @@ def main():
     hist = build_hist_profile([repo.read_fact_day(f) for f in prof])
 
     print("Обучающая выборка:")
-    Xtr, Mtr = collect(train_f, schedule, hist, route_mode, meta, 0.3, rng)
+    Xtr, Mtr = cached("train", train_f, schedule, hist, route_mode, meta, 0.3, rng)
     print("Тестовая выборка:")
-    Xte, Mte = collect(test_f, schedule, hist, route_mode, meta, 0.5, rng)
+    Xte, Mte = cached("test", test_f, schedule, hist, route_mode, meta, 0.5, rng)
 
     # валидация для ранней остановки — последние 3 дня обучения
-    va = Mtr["date"] >= sorted(Mtr["date"].unique())[-3]
+    va = (Mtr["date"] >= sorted(Mtr["date"].unique())[-3]).to_numpy()
     predictor = DelayPredictor.new(iterations=800, depth=8, learning_rate=0.08, loss_function="Logloss",
                                     eval_metric="PRAUC", od_type="Iter", od_wait=60,
                                     random_seed=RANDOM_SEED, verbose=100, thread_count=-1)
@@ -87,6 +103,32 @@ def main():
                                      "Базовое правило: текущая задержка")],
            "n_test": int(len(y)), "n_test_early": int(early.sum())}
 
+    # --- основная метрика оценки: MAE отклонения в минутах ---
+    # MAE-обучение заметно прожорливее по памяти, поэтому берем подвыборку обучающих строк
+    import numpy as np
+    ytr_min, yte_min = Mtr.delay_future.to_numpy(), Mte.delay_future.to_numpy()
+    fit_idx = np.flatnonzero(~va)
+    if len(fit_idx) > REG_FIT_ROWS:
+        fit_idx = np.random.default_rng(RANDOM_SEED).choice(fit_idx, REG_FIT_ROWS, replace=False)
+    reg = DelayRegressor.new(iterations=700, depth=6, learning_rate=0.1,
+                             loss_function="MAE", eval_metric="MAE", od_type="Iter", od_wait=60,
+                             border_count=32, boosting_type="Plain",
+                             random_seed=RANDOM_SEED, verbose=100, thread_count=-1)
+    reg.fit(Xtr.iloc[fit_idx], ytr_min[fit_idx], eval_set=(Xtr[va], ytr_min[va]))
+    pred_min = reg.predict_delay(Xte)
+
+    median_delay = float(np.median(ytr_min))
+    preds = {"CatBoost (MAE-loss)": pred_min,
+             **baselines(Xte["delay_now"].to_numpy(), median_delay, len(yte_min))}
+    res["mae"] = [mae_report(yte_min, preds, "все машины"),
+                  mae_report(yte_min[early], {k: np.asarray(v, float)[early] for k, v in preds.items()},
+                             f"идут по графику (< {LATE_THRESHOLD_MIN:.0f} мин)"),
+                  mae_report(yte_min[~early], {k: np.asarray(v, float)[~early] for k, v in preds.items()},
+                             "уже опаздывают")]
+    res["mae_by_delay"] = mae_by_bucket(yte_min, preds)
+    res["mae_bias_min"] = round(float(np.mean(pred_min - yte_min)), 3)
+    res["feature_importance_regressor"] = reg.feature_importance().round(2).to_dict()
+
     res["risk_levels"] = risk_levels(y, p)
     res["feature_importance"] = predictor.feature_importance().round(2).to_dict()
     res["feature_descriptions"] = FEATURE_DESCRIPTIONS
@@ -94,6 +136,7 @@ def main():
     MODELS.mkdir(exist_ok=True)
     REPORTS.mkdir(exist_ok=True)
     predictor.save(MODELS / "delay_catboost.cbm")
+    reg.save(MODELS / "delay_regressor.cbm")
     with open(MODELS / "hist_profile.pkl", "wb") as fh:
         pickle.dump(hist, fh)
     with open(REPORTS / "metrics.json", "w") as fh:
