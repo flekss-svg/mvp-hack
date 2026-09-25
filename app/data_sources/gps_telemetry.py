@@ -9,9 +9,10 @@
     vehicle_id, trip_id, route_id, direction_id, ts_min, lat, lon, speed
 ts_min — минуты от начала служебных суток (03:00 = 180).
 
-NDTP: декодер пишется, когда будет спецификация формата от организаторов
-(функция decode_ndtp ниже). Если в данных нет trip_id, его нужно восстановить
-по наряду/выходу или сопоставлением «маршрут + направление + ближайший плановый рейс».
+NDTP: байты разбирает data_sources/ndtp_protocol.py, соединения принимает
+data_sources/ndtp_server.py. NDTP-пакет не содержит trip_id — только номер устройства
+(unit_id), координаты, время и скорость. Рейс нужно восстановить по наряду/выходу или
+сопоставлением «маршрут + направление + ближайший плановый рейс».
 """
 import math
 
@@ -21,10 +22,6 @@ import pandas as pd
 from app.domain.schema import STOP_EVENT_COLUMNS
 
 STOP_RADIUS_M = 60.0
-
-
-def decode_ndtp(raw: bytes) -> list:
-    raise NotImplementedError("Добавить после получения спецификации NDTP от организаторов")
 
 
 def _dist_m(lat1, lon1, lat2, lon2):

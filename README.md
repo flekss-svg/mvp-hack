@@ -7,7 +7,7 @@
 ## Как устроено
 
 ```
-GPS-отметки (NDTP) ──► data_sources/gps_telemetry.py ──┐
+GPS (NDTP) ──► ndtp_server.py ─► gps_telemetry.py ─────┐
                                                           │  events: StopEvent (domain/schema.py)
 плановое расписание ──► data_sources/mos_ru_schedule.py ─┤
 (data.mos.ru)                                            ▼
@@ -101,9 +101,33 @@ cd web && npm run dev                 # терминал 2, http://localhost:517
 
 Эти цифры доказывают, что конвейер работает и модель использует сигналы сверх текущего опоздания. Точность на реальных данных будет другой: модель выучила правила симулятора.
 
+## Приемник NDTP
+
+`uvicorn app.api:app` вместе с API поднимает TCP-сервер на порту 9201 (`NDTP_PORT`, `NDTP_HOST`, `NDTP_VERIFY_CRC` в `app/config.py`, переопределяются переменными окружения). Терминалы или эмулятор подключаются к нему сами. Состояние: `GET /api/live/units` (последнее положение каждой машины), `GET /api/health` (слушает ли порт).
+
+Только сервер, с выводом каждого пакета в консоль:
+
+```bash
+python3 -m app.data_sources.ndtp_server
+```
+
+Проверка с эмулятором организаторов (Docker, образ `ndtp-telemetry-emulator.tar` от них):
+
+```bash
+docker load -i ndtp-telemetry-emulator.tar
+docker run --rm -p 18080:18080 --add-host=host.docker.internal:host-gateway --name ndtp-emu ndtp-telemetry-emulator:1.0
+curl -X POST localhost:18080/api/config -H 'Content-Type: application/json' \
+  -d '{"targetHost":"host.docker.internal","targetPort":9201,"units":[{"unitId":1166336,"intervalMs":5000,"autoGenerate":true,"cells":[]}]}'
+curl localhost:8000/api/live/units
+```
+
+Тесты (без Docker, пакеты собираются по спецификации): `python3 -m unittest tests.test_ndtp -v`.
+
+Ограничения: сервер не отвечает терминалу (формата ответа в спецификации нет, эмулятор ответы не читает); из пакета берется только навигация (`G6CellNav00`), остальные ячейки игнорируются; в NDTP нет номера рейса — только `unit_id`.
+
 ## Когда придут данные организаторов
 
-1. Написать `decode_ndtp()` в `app/data_sources/gps_telemetry.py` под их формат.
+1. NDTP-приемник уже есть (см. ниже) — он принимает пакеты и хранит последнее положение каждой машины, но пока не передает отметки дальше в модель. Остается привязка отметок к остановкам (`pings_to_events` в `gps_telemetry.py`, сейчас пакетная, для потока нужна инкрементальная версия).
 2. Если в телематике нет номера рейса — сопоставить машину с рейсом по наряду или по «маршрут + направление + ближайший плановый рейс».
 3. Убрать `app.simulation.synthetic_telemetry` из `run_all.sh`, положить реальные события в `data/processed/fact/` через `processed_repository.save_fact_day()` (или слать их напрямую в `POST /events`).
 4. Заменить погоду из симулятора на реальную (Open-Meteo), праздники — на производственный календарь (`app/config.py:HOLIDAYS`).

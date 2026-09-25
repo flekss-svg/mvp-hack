@@ -13,13 +13,18 @@
     GET  /api/replay/frame        — кадр на момент t: машины, KPI, тревоги, медленные перегоны
     GET  /api/replay/timeline     — шкала времени: сколько машин с высоким риском по часам
     GET  /api/live/snapshot       — то же по форме, но из живого потока событий
+    GET  /api/live/units          — машины, подключенные по NDTP: последнее положение
     POST /api/events              — пачка событий «машина прошла остановку»
     POST /api/context             — погода/праздник на сегодня
+
+Вместе с API поднимается TCP-приемник NDTP (data_sources/ndtp_server.py, порт из config.py).
 
 Собранный фронтенд (web/dist) отдается статикой в корне — сервис и дашборд поднимаются
 одной командой.
 """
 import json
+import logging
+from contextlib import asynccontextmanager
 from typing import Callable
 
 from fastapi import FastAPI, HTTPException
@@ -29,12 +34,29 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app.config import HORIZON_MIN, LATE_THRESHOLD_MIN, REPORTS, WEB_DIST
+from app.data_sources.ndtp_server import NdtpServer
 from app.engine.feature_definitions import FEATURE_DESCRIPTIONS
 from app.model.artifacts import ModelArtifacts
 from app.service.replay_service import ReplayService
 from app.service.risk_service import RiskService
 
-app = FastAPI(title="Предиктор задержек наземного транспорта")
+# Подключения терминалов — в консоль uvicorn: первым делом смотрят, дошел ли терминал до нас.
+_ndtp_log = logging.getLogger("ndtp")
+_ndtp_log.setLevel(logging.INFO)
+_ndtp_log.handlers = logging.getLogger("uvicorn").handlers
+_ndtp_log.propagate = False
+
+_ndtp = NdtpServer()
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await _ndtp.start()
+    yield
+    await _ndtp.stop()
+
+
+app = FastAPI(title="Предиктор задержек наземного транспорта", lifespan=lifespan)
 
 # Дашборд в разработке живет на порту Vite и стучится сюда кросс-доменно.
 # Для прода сузить allow_origins до конкретного адреса.
@@ -114,6 +136,7 @@ def health():
         "sources": {
             "replay": {"ready": _replay.ready, "error": _replay.error},
             "live": {"ready": _live.ready, "error": _live.error},
+            "ndtp": {"ready": _ndtp.listening, "error": _ndtp.error},
         },
         "tripsInSchedule": _live.get().schedule_size if _live.ready else 0,
     }
@@ -166,6 +189,11 @@ def replay_timeline(mode: str | None = None):
 @app.get("/api/live/snapshot")
 def live_snapshot():
     return _live.get().snapshot()
+
+
+@app.get("/api/live/units")
+def live_units():
+    return _ndtp.snapshot()
 
 
 @app.post("/api/events")
