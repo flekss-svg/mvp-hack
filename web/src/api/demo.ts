@@ -54,8 +54,26 @@ function forecastDelay(v: ReturnType<typeof vehicle>) {
   return Math.round(Math.max(v.level === 2 ? 5.5 : -5, v.delay + v.risk / 12) * 10) / 10
 }
 
+const problemSegments = [2, 12, 18, 27, 36, 43]
+function context(v: ReturnType<typeof vehicle>, t: number) {
+  if (v.level === 3) return {}
+  const index = problemSegments[v.r]
+  return {
+    forecastReason: v.r % 2 ? 'Увеличение времени на остановках' : 'Снижение скорости на участке',
+    problemSegment: { index, from: stopName(v.r, index % 8), to: stopName(v.r, (index + 1) % 8) },
+    forecastTime: clock(t + 12),
+    averageSpeed: Math.round((28 - v.risk / 5) * 10) / 10,
+    dwellMinutes: Math.round(v.risk / 5) / 10,
+  }
+}
+
+export const demoDirectory = Array.from({ length: 24 }, (_, i) => ({
+  tripId: 1001 + i, route: routes[Math.floor(i / 4)].route, mode: routes[Math.floor(i / 4)].mode,
+}))
+
 function trip(v: ReturnType<typeof vehicle>, t: number): TripCard {
   return {
+    ...context(v, t),
     tripId: v.id, found: true, onLine: true, route: v.route.route, routeName: v.route.name,
     mode: v.route.mode, stop: stopName(v.r, v.s), delay: v.delay,
     risk: v.level === 3 ? null : v.risk, level: v.level,
@@ -67,9 +85,10 @@ function trip(v: ReturnType<typeof vehicle>, t: number): TripCard {
 function frame(p: { t: number; mode?: string; minLevel?: number; trip?: number | null }): Frame {
   const all = Array.from({ length: 24 }, (_, i) => vehicle(i, p.t))
   const filtered = all.filter((v) => !p.mode || p.mode === 'all' || v.route.mode === p.mode)
-  const visible = filtered.filter((v) => !p.minLevel || v.level === p.minLevel)
+  const visible = filtered.filter((v) => !p.minLevel || (v.level !== 3 && v.level >= p.minLevel))
   const alerts: Alert[] = filtered.filter((v) => v.level === 2 && v.delay < day.threshold)
     .sort((a, b) => b.risk - a.risk).map((v) => ({
+      ...context(v, p.t),
       tripId: v.id, route: v.route.route, mode: v.route.mode,
       dest: stopName(v.r, (v.s + 3) % 8), stop: stopName(v.r, v.s), delay: v.delay, risk: v.risk,
       forecastMinutes: 12, forecastDelay: forecastDelay(v),
@@ -87,7 +106,7 @@ function frame(p: { t: number; mode?: string; minLevel?: number; trip?: number |
       risk: visible.map((v) => v.risk), level: visible.map((v) => v.level), late: visible.map((v) => Number(v.delay >= day.threshold)),
       route: visible.map((v) => v.route.route), mode: visible.map((v) => v.route.mode),
     },
-    slowSegments: [[2, 1, 4.8], [12, 0, 2.1], [27, 1, 5.2], [36, 0, 2.7]],
+    slowSegments: [[2, 1, 4.8], [12, 0, 2.1], [18, 1, 3.6], [27, 1, 5.2], [36, 0, 2.7], [43, 1, 4.1]],
     trip: selected ? trip(selected, p.t) : null,
   }
 }
@@ -114,7 +133,7 @@ const model: ModelQuality = {
 
 const started = Date.now()
 function live(): LiveSnapshot {
-  const t = 450 + ((Date.now() - started) / 1000) % 930
+  const t = 450 + (((Date.now() - started) / 1000) * (10 / 60)) % 930
   const current = frame({ t })
   return { clock: current.clock, tracked: 24, kpi: current.kpi, alerts: current.alerts,
     map: { day, frame: current },

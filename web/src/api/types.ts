@@ -14,19 +14,29 @@ export interface Kpi {
   hint?: string
 }
 
-export interface Alert {
+/** Optional presentation context; currently supplied by the synthetic source only. */
+export interface ForecastContext {
+  forecastReason?: string
+  problemSegment?: { from: string; to: string; index: number }
+  forecastTime?: string
+  averageSpeed?: number
+  dwellMinutes?: number
+}
+
+export interface Alert extends ForecastContext {
   tripId: number
   route: string
   mode: string
   dest: string
   stop: string
+  /** Signed minutes: negative = ahead of schedule, positive = late. */
   delay: number
   risk: number
   forecastMinutes?: number
   forecastDelay?: number
 }
 
-export interface TripCard {
+export interface TripCard extends ForecastContext {
   found: boolean
   onLine: boolean
   route: string

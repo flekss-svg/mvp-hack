@@ -23,6 +23,10 @@ test('demo has 24 synthetic vehicles with a valid network and all risk states', 
     assert.equal(selected.trip.tripId, alert.tripId)
     assert.equal(selected.trip.forecastDelay, alert.forecastDelay)
     assert.equal(selected.trip.forecastMinutes, 12)
+    assert.ok(alert.forecastReason)
+    assert.ok(frame.slowSegments.some(([index]) => index === alert.problemSegment.index))
+    assert.deepEqual(selected.trip.problemSegment, alert.problemSegment)
+    assert.match(selected.trip.forecastTime, /^\d{2}:\d{2}$/)
   }
 })
 

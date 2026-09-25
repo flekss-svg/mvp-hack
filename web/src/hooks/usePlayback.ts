@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-export const SPEEDS = [15, 60, 300]
+export const SPEEDS = [1, 5, 10, 30, 60]
 /** Как часто отпускаем новое время наружу: каждое значение — это запрос кадра к API. */
 const COMMIT_MS = 120
 
@@ -20,7 +20,7 @@ export interface Playback {
 export function usePlayback(bounds: { tMin: number; tMax: number } | null, active = true, autoplay = false): Playback {
   const [t, setT] = useState<number | null>(null)
   const [playing, setPlaying] = useState(autoplay)
-  const [speed, setSpeed] = useState(60)
+  const [speed, setSpeed] = useState(10)
   const clock = useRef(0)
   const tMin = bounds?.tMin
   const tMax = bounds?.tMax

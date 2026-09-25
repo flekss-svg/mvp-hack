@@ -1,18 +1,21 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Timeline as TimelineData } from '../api/types'
 
 interface Props {
   data: TimelineData | null
   t: number | null
   onSeek: (t: number) => void
+  highColor?: string
 }
 
 const cssVar = (name: string) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 
 /** Сколько машин с высоким риском в каждый момент дня. Счет ведет сервер, здесь — отрисовка. */
-export function Timeline({ data, t, onSeek }: Props) {
+export function Timeline({ data, t, onSeek, highColor }: Props) {
   const ref = useRef<HTMLCanvasElement>(null)
+  const [hover, setHover] = useState<number | null>(null)
+  const bin = data && hover !== null ? data.bins.reduce<(typeof data.bins)[number] | null>((best, b) => !best || Math.abs(b.t - hover) < Math.abs(best.t - hover) ? b : best, null) : null
 
   const draw = useCallback(() => {
     const cv = ref.current
@@ -31,7 +34,7 @@ export function Timeline({ data, t, onSeek }: Props) {
     const peak = Math.max(1, ...data.bins.map((b) => b.high))
     const barWidth = Math.max(1, w / Math.max(data.bins.length, 1) - 0.5)
 
-    ctx.fillStyle = cssVar('--high')
+    ctx.fillStyle = highColor ?? cssVar('--high')
     ctx.globalAlpha = 0.32
     for (const b of data.bins) {
       const bh = (b.high / peak) * (h - 14)
@@ -63,7 +66,7 @@ export function Timeline({ data, t, onSeek }: Props) {
       ctx.fillStyle = cssVar('--ink')
       ctx.fillRect(x(t) - 1, 0, 2, h - 12)
     }
-  }, [data, t])
+  }, [data, t, highColor])
 
   useEffect(() => {
     draw()
@@ -78,7 +81,10 @@ export function Timeline({ data, t, onSeek }: Props) {
       <input type="range" aria-label="Время записанного дня" min={data?.tMin ?? 0} max={data?.tMax ?? 1}
         step={0.25} value={t ?? data?.tMin ?? 0} disabled={!data}
         aria-valuetext={t === null ? 'Нет данных' : `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`}
-        onChange={(e) => onSeek(Number(e.target.value))} />
+        onPointerMove={(e) => { if (data) { const r = e.currentTarget.getBoundingClientRect(); setHover(data.tMin + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (data.tMax - data.tMin)) } }}
+        onPointerLeave={() => setHover(null)} onBlur={() => setHover(null)} onFocus={() => setHover(t)}
+        onChange={(e) => { const next = Number(e.target.value); setHover(next); onSeek(next) }} />
+      {bin && data && <div className="timeline-tooltip" role="tooltip" style={{ left: `${Math.min(90, Math.max(10, (bin.t - data.tMin) / (data.tMax - data.tMin || 1) * 100))}%` }}><b>{String(Math.floor(bin.t / 60)).padStart(2, '0')}:{String(Math.floor(bin.t % 60)).padStart(2, '0')}</b><span>{bin.high} ТС высокого риска</span></div>}
     </div>
   )
 }
