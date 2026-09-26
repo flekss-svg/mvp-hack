@@ -21,6 +21,11 @@ export function forecastText(current?: number, future?: number) {
   }
   return `Ожидается опоздание на ${amount(future)} мин`
 }
+export const reasonText = (reason?: string) => reason || 'Не выявлена'
+export function segmentText(segment?: { from: string; to: string; excess?: number } | null) {
+  if (!segment) return 'Замедлений впереди не видно'
+  return `${segment.from} → ${segment.to}${known(segment.excess) ? ` · медленнее плана на ${amount(segment.excess)} мин` : ''}`
+}
 export const horizonText = (minutes?: number) => known(minutes) ? `Через ${amount(minutes)} мин` : 'Горизонт не передан'
 export const riskText = (risk?: number | null) => known(risk) ? `${Math.round(risk)}%` : 'Нет прогноза'
 export function expectedArrival(scheduled?: string, expected?: string, delay?: number) {

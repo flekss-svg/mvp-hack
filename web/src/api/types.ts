@@ -14,11 +14,12 @@ export interface Kpi {
   hint?: string
 }
 
-/** Optional presentation context; currently supplied by the synthetic source only. */
+/** Прогноз и его объяснение. Заполняет бэкенд: модель риска, регрессор опоздания и SHAP-причины. */
 export interface ForecastContext {
   currentTime?: string
   forecastReason?: string
-  problemSegment?: { from: string; to: string; index: number }
+  /** Самый медленный сейчас перегон по пути до точки прогноза; excess — насколько медленнее плана, мин */
+  problemSegment?: { from: string; to: string; index?: number; excess?: number } | null
   forecastTime?: string
   forecastStop?: string
   scheduledArrival?: string

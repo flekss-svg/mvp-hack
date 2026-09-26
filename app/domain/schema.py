@@ -56,6 +56,10 @@ class RiskPrediction(TypedDict):
     t: float
     delay_now: float
     risk: float
+    target_stop_id: str             # точка прогноза: остановка ~12 минут вперед по рейсу
+    target_plan: float              # ее плановое время, минуты от начала служебных суток
+    forecast_delay: float           # ожидаемое отклонение в точке прогноза, мин (DelayRegressor)
+    reason: str | None              # главная причина прогноза (model/explain.py) или None
 
 
 @dataclass

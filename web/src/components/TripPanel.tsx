@@ -1,5 +1,5 @@
 import type { TripCard } from '../api/types'
-import { amount, currentText, expectedArrival, expectedDelayText, horizonText, riskText, updatedText } from '../ui/presentation'
+import { amount, currentText, expectedArrival, expectedDelayText, horizonText, reasonText, riskText, segmentText, updatedText } from '../ui/presentation'
 import { ChangedValue } from './ChangedValue'
 
 const TONES = ['low', 'mid', 'high', 'muted']
@@ -15,7 +15,7 @@ export function TripPanel({ trip, tripId, updatedAt, now, onClose }: { trip: Tri
     <div className="trip-section"><h3>{trip.currentTime ? `СЕЙЧАС · ${trip.currentTime}` : 'СЕЙЧАС'}</h3><ChangedValue className="trip-statement" value={currentText(trip.delay)} /><dl><dt>Текущая остановка</dt><dd>{trip.stop || 'Не передана'}</dd>{trip.next?.[0] && <><dt>Следующая остановка</dt><dd>{trip.next[0].stop}</dd></>}<dt>Статус</dt><dd>{trip.onLine ? 'На линии' : 'Не на линии'}</dd></dl></div>
     <div className={`trip-section trip-forecast forecast-${tone}`}><div className="forecast-heading"><h3>ПРОГНОЗ</h3><span>{trip.forecastMinutes === undefined ? '' : horizonText(trip.forecastMinutes)}</span></div>
       {trip.forecastStop || trip.scheduledArrival || trip.expectedArrival || trip.forecastDelay !== undefined ? <dl><dt>Остановка</dt><dd>{trip.forecastStop ?? 'Не передана'}</dd>{trip.scheduledArrival && <><dt>По расписанию</dt><dd>{trip.scheduledArrival}</dd></>}{expectedArrival(trip.scheduledArrival, trip.expectedArrival, trip.expectedDelay ?? trip.forecastDelay) && <><dt>Ожидаемое прибытие</dt><dd>{expectedArrival(trip.scheduledArrival, trip.expectedArrival, trip.expectedDelay ?? trip.forecastDelay)}</dd></>}{expectedDelayText(trip.expectedDelay ?? trip.forecastDelay) && <><dt>Ожидаемое опоздание</dt><dd>{expectedDelayText(trip.expectedDelay ?? trip.forecastDelay)}</dd></>}</dl> : <p className="forecast-unavailable">Прогноз времени прибытия пока недоступен</p>}
-      <dl><dt>Предполагаемая причина</dt><dd>{trip.forecastReason ?? 'Не передана'}</dd><dt>Проблемный участок</dt><dd>{trip.problemSegment ? `${trip.problemSegment.from} → ${trip.problemSegment.to}` : 'Не передан'}</dd></dl>
+      <dl><dt>Предполагаемая причина</dt><dd>{reasonText(trip.forecastReason)}</dd><dt>Проблемный участок</dt><dd>{segmentText(trip.problemSegment)}</dd></dl>
       {trip.level === 3 && <p className="muted">Рейс скоро завершится — прогноз не выдаётся.</p>}
     </div>
     {(trip.averageSpeed !== undefined || trip.dwellMinutes !== undefined) && <div className="trip-section"><h3>ДВИЖЕНИЕ</h3><dl>{trip.averageSpeed !== undefined && <><dt>Средняя скорость</dt><dd>{amount(trip.averageSpeed)} км/ч</dd></>}{trip.dwellMinutes !== undefined && <><dt>Время простоя</dt><dd>{amount(trip.dwellMinutes)} мин</dd></>}</dl></div>}

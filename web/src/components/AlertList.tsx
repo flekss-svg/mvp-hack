@@ -1,5 +1,5 @@
 import type { StableIncident } from '../ui/presentation'
-import { currentText, expectedArrival, expectedDelayText, horizonText, riskText, updatedText } from '../ui/presentation'
+import { currentText, expectedArrival, expectedDelayText, horizonText, reasonText, riskText, segmentText, updatedText } from '../ui/presentation'
 import { ChangedValue } from './ChangedValue'
 import { Icon } from './Icon'
 
@@ -12,7 +12,7 @@ export function AlertList({ alerts, onSelect, empty, updatedAt, now }: Props) {
       <span className="incident-current"><span className="comparison-label">{a.currentTime ? `Сейчас · ${a.currentTime}` : 'Сейчас'}</span><ChangedValue value={currentText(a.delay)} /></span>
       <span className="incident-forecast"><span className="forecast-heading"><span className="comparison-label">Прогноз</span><span>{a.forecastMinutes === undefined ? '' : horizonText(a.forecastMinutes)}</span></span>
         {a.forecastStop || a.scheduledArrival || a.expectedArrival || a.forecastDelay !== undefined ? <span className="arrival-forecast"><b>{a.forecastStop || 'Остановка прогноза не передана'}</b>{a.scheduledArrival && <span><i>По расписанию</i><time>{a.scheduledArrival}</time></span>}{expectedArrival(a.scheduledArrival, a.expectedArrival, a.expectedDelay ?? a.forecastDelay) && <span><i>Ожидаемое прибытие</i><time>{expectedArrival(a.scheduledArrival, a.expectedArrival, a.expectedDelay ?? a.forecastDelay)}</time></span>}{expectedDelayText(a.expectedDelay ?? a.forecastDelay) && <span><i>Ожидаемое опоздание</i><strong>{expectedDelayText(a.expectedDelay ?? a.forecastDelay)}</strong></span>}</span> : <span className="forecast-unavailable">Прогноз времени прибытия пока недоступен</span>}</span>
-      <span className="incident-context"><span><span>Причина</span><span>{a.forecastReason || 'Не передана сервисом'}</span></span><span><span>Участок</span><span>{a.problemSegment ? `${a.problemSegment.from} → ${a.problemSegment.to}` : 'Не передан сервисом'}</span></span></span>
+      <span className="incident-context"><span><span>Причина</span><span>{reasonText(a.forecastReason)}</span></span><span><span>Участок</span><span>{segmentText(a.problemSegment)}</span></span></span>
       <span className="alert-bottom"><span className="risk-text"><Icon name="warning" size={12} />{a.critical ? 'Критический риск' : 'Высокий риск'}</span><span className="incident-age">{updatedText(updatedAt, now)}</span></span>
     </button>
   </li>)}</ul>}</div>

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from catboost import CatBoostClassifier, CatBoostRegressor
+from catboost import CatBoostClassifier, CatBoostRegressor, Pool
 
 from app.engine.feature_definitions import FEATURES
 
@@ -47,6 +47,13 @@ class DelayPredictor:
         if isinstance(features, pd.DataFrame):
             features = features[FEATURES]
         return self._model.predict_proba(features)[:, 1]
+
+    def explain(self, features) -> np.ndarray:
+        """Вклад каждого признака (в порядке FEATURES) в прогноз каждой строки — SHAP-значения.
+        Положительный вклад толкает прогноз к «опоздает». Для причины в model/explain.py."""
+        if isinstance(features, pd.DataFrame):
+            features = features[FEATURES]
+        return self._model.get_feature_importance(Pool(features), type="ShapValues")[:, :-1]
 
     def feature_importance(self) -> pd.Series:
         return pd.Series(self._model.get_feature_importance(), index=FEATURES).sort_values(ascending=False)

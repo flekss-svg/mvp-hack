@@ -103,7 +103,7 @@ class Lazy:
 _live = Lazy("live", lambda: RiskService(ModelArtifacts.load()),
              "Нет обработанных данных или модели. Запустите ./run_all.sh")
 _replay = Lazy("replay", ReplayService.load,
-               "Нет кэша записанного дня. Запустите python -m app.replay_build")
+               "Нет кэша записанного дня или он собран старой версией. Запустите python -m app.replay_build")
 
 
 def _mode_index(mode: str | None) -> int | None:

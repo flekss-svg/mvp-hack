@@ -16,6 +16,7 @@ from app.config import LATE_THRESHOLD_MIN, REPLAY_CACHE, RISK_LEVELS
 from app.data_sources import processed_repository as repo
 from app.engine.stream_state import StreamState, run_day
 from app.model.artifacts import ModelArtifacts
+from app.model.explain import REASONS, TOP, main_reasons, reason_text
 from app.model.training import day_context
 from app.service.replay_service import KEY_SPAN, ReplayDay
 
@@ -41,7 +42,17 @@ def build(date: str | None = None) -> ReplayDay:
     df = repo.read_fact_day(path)
     X, M = run_day(state, df, sample=1.0)
     M["risk"] = artifacts.predictor.predict_risk(X)
-    print(f"{date}: {len(df):,} событий, {len(M):,} прогнозов")
+    M["fdelay"] = artifacts.regressor.predict_delay(X)
+    # Причину объясняем там, где диспетчеру ее вообще покажут: средний риск и выше.
+    # SHAP заметно дороже самого прогноза, считать его на весь день незачем.
+    reason = np.full((len(M), TOP), -1, np.int16)
+    explain_rows = np.flatnonzero(M.risk.to_numpy() >= RISK_LEVELS[0])
+    if len(explain_rows):
+        reason[explain_rows] = main_reasons(artifacts.predictor.explain(X.iloc[explain_rows]))
+    print(f"{date}: {len(df):,} событий, {len(M):,} прогнозов, объяснено {len(explain_rows):,}")
+    texts = pd.Series([reason_text(r) or "(причина не выявлена)" for r in reason[explain_rows]])
+    for text, n in texts.value_counts().head(8).items():
+        print(f"  {n:7,}  {text}")
 
     lv = np.digitize(M.risk, list(RISK_LEVELS))
     for i, n in enumerate(["низкий", "средний", "высокий"]):
@@ -72,6 +83,10 @@ def build(date: str | None = None) -> ReplayDay:
     ev_risk[at] = M.risk.to_numpy(np.float32)
     ev_target = np.full(len(df), -1, np.int64)
     ev_target[at] = np.where(np.isnan(tgt), -1, np.nan_to_num(tgt)).astype(np.int64)
+    ev_fdelay = np.full(len(df), np.nan, np.float32)
+    ev_fdelay[at] = M.fdelay.to_numpy(np.float32)
+    ev_reason = np.full((len(df), TOP), -1, np.int16)
+    ev_reason[at] = reason
 
     # --- глобальная сортировка по (рейс, время) ---
     key = ev_trip * KEY_SPAN + ev_fact
@@ -81,6 +96,7 @@ def build(date: str | None = None) -> ReplayDay:
     ev_target = np.where(ev_target >= 0, inv[np.maximum(ev_target, 0)], -1)[order]
     ev_trip, ev_stop = ev_trip[order], ev_stop[order]
     ev_plan, ev_fact, ev_risk = ev_plan[order], ev_fact[order], ev_risk[order]
+    ev_fdelay, ev_reason = ev_fdelay[order], ev_reason[order]
     ev_key = key[order]
 
     trip_off = np.concatenate([[0], np.flatnonzero(np.diff(ev_trip)) + 1, [len(ev_trip)]]).astype(np.int64)
@@ -111,10 +127,12 @@ def build(date: str | None = None) -> ReplayDay:
         seg_a=seg_uniq[:, 0].astype(np.int32), seg_b=seg_uniq[:, 1].astype(np.int32),
         ev_stop=ev_stop, ev_plan=ev_plan, ev_fact=ev_fact, ev_risk=ev_risk,
         ev_target=ev_target.astype(np.int64), ev_trip=ev_trip, ev_key=ev_key,
+        ev_fdelay=ev_fdelay, ev_reason=ev_reason,
         trip_off=trip_off, trip_route=trip_route, trip_mode=trip_mode,
         route_short=routes.route_short_name.tolist(), route_long=routes.route_long_name.tolist(),
         modes=modes,
         trav_t=trav_t[o], trav_seg=seg_inv[o].astype(np.int32), trav_excess=excess[o].astype(np.float32),
+        reasons=REASONS,
     )
     return day
 

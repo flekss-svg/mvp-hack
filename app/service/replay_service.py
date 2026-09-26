@@ -15,6 +15,7 @@ import numpy as np
 
 from app.config import (ALERT_LIMIT, REPLAY_CACHE, RISK_LEVELS, SLOW_SEG_MIN,
                         SLOW_SEG_WINDOW_MIN)
+from app.model.explain import reason_text
 
 # Ключ сортировки событий: номер рейса * KEY_SPAN + время. Так все события одного рейса лежат
 # подряд и весь массив глобально отсортирован — положение всех машин на момент t находится
@@ -51,6 +52,8 @@ class ReplayDay:
     ev_target: np.ndarray    # индекс события, в котором прогноз проверяется; -1 если нет
     ev_trip: np.ndarray      # индекс рейса
     ev_key: np.ndarray       # trip * KEY_SPAN + fact
+    ev_fdelay: np.ndarray    # ожидаемое отклонение в точке прогноза, мин (DelayRegressor); NaN если нет
+    ev_reason: np.ndarray    # (события x 2) главные причины прогноза — индексы в reasons; -1 нет
 
     trip_off: np.ndarray     # (T+1,) границы событий каждого рейса
     trip_route: np.ndarray   # индекс маршрута
@@ -63,6 +66,10 @@ class ReplayDay:
     trav_t: np.ndarray       # прохождения перегонов, отсортированы по времени
     trav_seg: np.ndarray
     trav_excess: np.ndarray  # насколько дольше плана, мин
+
+    # тексты причин храним в кэше вместе с индексами: правка формулировок в коде
+    # не может молча перепутать причины в уже собранном кэше
+    reasons: list[str]
 
     metrics: dict = field(default_factory=dict)
 
@@ -91,6 +98,7 @@ class ReplayService:
         # только на окно в 10 минут, а не на весь день
         self._by_time = np.argsort(day.ev_fact, kind="stable")
         self._time_sorted = day.ev_fact[self._by_time]
+        self._seg_index = {(int(a), int(b)): i for i, (a, b) in enumerate(zip(day.seg_a, day.seg_b))}
 
     @classmethod
     def load(cls, path=REPLAY_CACHE) -> "ReplayService":
@@ -128,6 +136,7 @@ class ReplayService:
     def frame(self, t: float, mode: int | None = None, min_level: int = 0,
               trip_id: int | None = None) -> dict:
         d = self.day
+        means = self._segment_means(t)
         trips, idx = self._alive(t, mode)
         last = self._trip_last[trips]
         nxt = np.minimum(idx + 1, last)
@@ -159,10 +168,10 @@ class ReplayService:
                 "risk": np.where(risk[keep] < 0, -1, (risk[keep] * 100).round()).astype(int).tolist(),
                 "late": late[keep].astype(int).tolist(),
             },
-            "slowSegments": self._slow_segments(t),
-            "alerts": self._alerts(trips, idx, risk, delay),
+            "slowSegments": self._slow_segments(means),
+            "alerts": self._alerts(trips, idx, risk, delay, t, means),
             # карточка выбранного рейса едет вместе с кадром: один запрос на такт
-            "trip": self.trip(trip_id, t) if trip_id is not None else None,
+            "trip": self.trip(trip_id, t, means) if trip_id is not None else None,
         }
 
     def _kpi(self, t, mode, risk, late, on_line) -> list[dict]:
@@ -196,21 +205,57 @@ class ReplayService:
             return None
         return int(((d.ev_fact[tgt] - d.ev_plan[tgt]) >= d.threshold).sum()), len(tgt)
 
-    def _slow_segments(self, t: float) -> list[list]:
+    def _segment_means(self, t: float) -> np.ndarray:
+        """Среднее превышение плана на каждом перегоне по прохождениям за последние минуты."""
         d = self.day
+        n = len(d.seg_a)
         lo, hi = np.searchsorted(d.trav_t, [t - SLOW_SEG_WINDOW_MIN, t])
         if hi <= lo:
-            return []
+            return np.zeros(n)
         seg, ex = d.trav_seg[lo:hi], d.trav_excess[lo:hi]
-        n = len(d.seg_a)
         total = np.bincount(seg, weights=ex, minlength=n)
         count = np.bincount(seg, minlength=n)
-        mean = np.divide(total, count, out=np.zeros(n), where=count > 0)
-        hit = np.flatnonzero(mean >= SLOW_SEG_MIN[0])
-        # [индекс перегона, ступень (0 — медленнее плана, 1 — сильно), среднее превышение, мин]
-        return [[int(s), int(mean[s] >= SLOW_SEG_MIN[1]), round(float(mean[s]), 1)] for s in hit]
+        return np.divide(total, count, out=np.zeros(n), where=count > 0)
 
-    def _alerts(self, trips, idx, risk, delay) -> list[dict]:
+    @staticmethod
+    def _slow_segments(means: np.ndarray) -> list[list]:
+        hit = np.flatnonzero(means >= SLOW_SEG_MIN[0])
+        # [индекс перегона, ступень (0 — медленнее плана, 1 — сильно), среднее превышение, мин]
+        return [[int(s), int(means[s] >= SLOW_SEG_MIN[1]), round(float(means[s]), 1)] for s in hit]
+
+    def _problem_segment(self, ev: int, tgt: int, means: np.ndarray) -> dict | None:
+        """Самый медленный сейчас перегон на пути рейса до точки прогноза — если такой есть."""
+        d = self.day
+        best, worst = None, SLOW_SEG_MIN[0]
+        for j in range(ev + 1, tgt + 1):
+            s = self._seg_index.get((int(d.ev_stop[j - 1]), int(d.ev_stop[j])))
+            if s is not None and means[s] >= worst:
+                best, worst = s, means[s]
+        if best is None:
+            return None
+        return {"from": d.stop_names[d.seg_a[best]], "to": d.stop_names[d.seg_b[best]], "index": best,
+                "excess": round(float(worst), 1)}
+
+    def _forecast(self, ev: int, t: float, means: np.ndarray) -> dict:
+        """Что и почему модель ждет в точке прогноза (~12 минут вперед по рейсу). Пусто, если
+        прогноз для этого события не выдавался (рейс вот-вот закончится)."""
+        d = self.day
+        tgt = int(d.ev_target[ev])
+        if d.ev_risk[ev] < 0 or tgt < 0:
+            return {}
+        plan = float(d.ev_plan[tgt])
+        out = {"currentTime": hhmm(t), "forecastStop": d.stop_names[d.ev_stop[tgt]],
+               "scheduledArrival": hhmm(plan), "problemSegment": self._problem_segment(ev, tgt, means)}
+        fdelay = float(d.ev_fdelay[ev])
+        if not np.isnan(fdelay):
+            out |= {"forecastDelay": round(fdelay, 1), "expectedArrival": hhmm(plan + fdelay),
+                    "forecastMinutes": max(1, round(plan + fdelay - t))}
+        reason = reason_text(d.ev_reason[ev], d.reasons)
+        if reason:
+            out["forecastReason"] = reason
+        return out
+
+    def _alerts(self, trips, idx, risk, delay, t, means) -> list[dict]:
         """Машины, которые сейчас идут по графику, но опоздают через 10–15 минут — ради них
         и нужен прогноз. Сортировка по текущему отклонению: сверху те, у кого все выглядит
         благополучно, — их диспетчер без модели не увидит вовсе."""
@@ -229,6 +274,7 @@ class ReplayService:
                 "stop": d.stop_names[d.ev_stop[ev]],
                 "delay": round(float(delay[i]), 1),
                 "risk": int(round(float(risk[i]) * 100)),
+                **self._forecast(ev, t, means),
             })
         return out
 
@@ -252,7 +298,7 @@ class ReplayService:
 
     # ---------- карточка рейса ----------
 
-    def trip(self, trip_id: int, t: float) -> dict:
+    def trip(self, trip_id: int, t: float, means: np.ndarray | None = None) -> dict:
         d = self.day
         if not 0 <= trip_id < self._n_trips:
             return {"found": False}
@@ -291,4 +337,5 @@ class ReplayService:
             "outcome": outcome,
             "next": [{"stop": d.stop_names[d.ev_stop[j]], "plan": hhmm(d.ev_plan[j])}
                      for j in range(ev + 1, min(last + 1, ev + 5))],
+            **self._forecast(ev, t, self._segment_means(t) if means is None else means),
         }

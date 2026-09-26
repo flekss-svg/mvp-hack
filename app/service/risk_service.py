@@ -8,12 +8,15 @@ README — для прода нужен Redis/аналог). Используе�
 from datetime import date as _date, datetime
 from typing import Iterable
 
+import numpy as np
 import pandas as pd
 
 from app.config import ALERT_LIMIT, LATE_THRESHOLD_MIN, RISK_LEVELS
 from app.domain.schema import RiskPrediction, StopEvent
 from app.engine.stream_state import StreamState
 from app.model.artifacts import ModelArtifacts
+from app.model.explain import TOP, main_reasons, reason_text
+from app.service.replay_service import hhmm
 
 
 class RiskService:
@@ -30,26 +33,43 @@ class RiskService:
     def ingest_events(self, events: Iterable[StopEvent]) -> int:
         """Принять пачку событий «машина прошла остановку», обновить риск по затронутым
         рейсам. Возвращает число событий, для которых был посчитан прогноз."""
-        rows, keys = [], []
+        rows, keys, targets = [], [], []
+        finished = set()   # рейсы, которые в этой пачке дошли до конца: прогноз по ним больше не нужен
         for e in sorted(events, key=lambda x: x["fact"]):
             if e["trip_id"] not in self._artifacts.schedule:
                 continue
             f, h = self._state.features(e)
             self._state.update(e)
             if h is None:
-                self._latest.pop(e["trip_id"], None)
+                finished.add(e["trip_id"])
                 continue
+            finished.discard(e["trip_id"])
             rows.append(f)
             keys.append(e)
+            targets.append(h)
         if rows:
-            probs = self._artifacts.predictor.predict_risk(pd.DataFrame(rows))
-            for e, f, prob in zip(keys, rows, probs):
+            X = pd.DataFrame(rows)
+            probs = self._artifacts.predictor.predict_risk(X)
+            fdelays = self._artifacts.regressor.predict_delay(X)
+            # причину объясняем только там, где ее покажут диспетчеру (средний риск и выше)
+            reasons = np.full((len(rows), TOP), -1)
+            explain = np.flatnonzero(probs >= RISK_LEVELS[0])
+            if len(explain):
+                reasons[explain] = main_reasons(self._artifacts.predictor.explain(X.iloc[explain]))
+            for e, f, h, prob, fd, r in zip(keys, rows, targets, probs, fdelays, reasons):
+                stops, plan = self._artifacts.schedule[e["trip_id"]]
                 self._latest[e["trip_id"]] = RiskPrediction(
                     trip_id=e["trip_id"],
                     route=self._artifacts.route_name.get(e["route_id"], e["route_id"]),
                     mode=self._artifacts.route_mode.get(e["route_id"], "other"),
                     stop_id=e["stop_id"], t=e["fact"],
-                    delay_now=round(f["delay_now"], 1), risk=round(float(prob), 3))
+                    delay_now=round(f["delay_now"], 1), risk=round(float(prob), 3),
+                    target_stop_id=stops[h], target_plan=float(plan[h]),
+                    forecast_delay=round(float(fd), 1), reason=reason_text(r))
+        # удаляем после записи: иначе прогноз по раннему событию этой же пачки вернул бы
+        # в тревоги рейс, который уже закончился
+        for trip_id in finished:
+            self._latest.pop(trip_id, None)
         return len(rows)
 
     def current_risk(self, limit: int = 50, min_risk: float = 0.0) -> list[RiskPrediction]:
@@ -83,8 +103,20 @@ class RiskService:
                 "stop": self._artifacts.stop_name.get(v["stop_id"], v["stop_id"]),
                 "delay": v["delay_now"],
                 "risk": int(round(v["risk"] * 100)),
+                **self._forecast(v),
             } for v in alerts],
         }
+
+    def _forecast(self, v: RiskPrediction) -> dict:
+        """Те же поля прогноза, что у записанного дня (ReplayService._forecast)."""
+        arrival = v["target_plan"] + v["forecast_delay"]
+        out = {"currentTime": hhmm(v["t"]),
+               "forecastStop": self._artifacts.stop_name.get(v["target_stop_id"], v["target_stop_id"]),
+               "scheduledArrival": hhmm(v["target_plan"]), "forecastDelay": v["forecast_delay"],
+               "expectedArrival": hhmm(arrival), "forecastMinutes": max(1, round(arrival - v["t"]))}
+        if v["reason"]:
+            out["forecastReason"] = v["reason"]
+        return out
 
     def _destination(self, trip_id: str) -> str:
         stops, _ = self._artifacts.schedule[trip_id]

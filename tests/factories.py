@@ -4,7 +4,11 @@ import struct
 
 import numpy as np
 
+from app.model.explain import REASONS
 from app.service.replay_service import KEY_SPAN, ReplayDay
+
+
+LEAD_REASON = "Сбился интервал с впереди идущей машиной"
 
 
 def make_replay_day() -> ReplayDay:
@@ -30,15 +34,18 @@ def make_replay_day() -> ReplayDay:
         ev_target=np.array([1, -1], dtype=np.int64),
         ev_trip=ev_trip,
         ev_key=ev_trip * KEY_SPAN + ev_fact,
+        ev_fdelay=np.array([4.0, np.nan], dtype=np.float32),
+        ev_reason=np.array([[REASONS.index(LEAD_REASON), -1], [-1, -1]], dtype=np.int16),
         trip_off=np.array([0, 2], dtype=np.int64),
         trip_route=np.array([0], dtype=np.int32),
         trip_mode=np.array([0], dtype=np.int32),
         route_short=["42"],
         route_long=["Тестовый маршрут"],
         modes=["bus", "tram", "trolley", "other"],
-        trav_t=np.array([490.0], dtype=np.float64),
-        trav_seg=np.array([0], dtype=np.int32),
-        trav_excess=np.array([3.0], dtype=np.float32),
+        trav_t=np.array([482.0, 490.0], dtype=np.float64),
+        trav_seg=np.array([0, 0], dtype=np.int32),
+        trav_excess=np.array([2.0, 3.0], dtype=np.float32),
+        reasons=REASONS,
     )
 
 

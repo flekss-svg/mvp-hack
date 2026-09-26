@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Alert } from '../api/types'
 import { DEFAULT_DISPLAY, PALETTES, parseDisplay } from './display'
-import { ageSeconds, currentText, forecastText, riskText, stableIncidents } from './presentation'
+import { ageSeconds, currentText, forecastText, reasonText, riskText, segmentText, stableIncidents } from './presentation'
 
 const alert = (tripId: number, risk: number): Alert =>
   ({ tripId, risk, delay: 2, route: '17', mode: 'bus', dest: 'Маяковская', stop: 'Тверская' })
@@ -52,5 +52,18 @@ describe('display preferences', () => {
     expect(parseDisplay(null)).toEqual(DEFAULT_DISPLAY)
     expect(parseDisplay(JSON.stringify({ ...custom, colors: { high: 'url(bad)' } })).colors.high).toBe(DEFAULT_DISPLAY.colors.high)
     expect(parseDisplay(JSON.stringify({ ...DEFAULT_DISPLAY, palette: 'colorblind' })).colors).toEqual(PALETTES.colorblind)
+  })
+})
+
+describe('forecast explanation text', () => {
+  it('shows the model reason or says it was not found', () => {
+    expect(reasonText('Дождь')).toBe('Дождь')
+    expect(reasonText(undefined)).toBe('Не выявлена')
+  })
+
+  it('describes the problem segment with its slowdown', () => {
+    expect(segmentText({ from: 'Садовая', to: 'Парковая', excess: 2.3 })).toBe('Садовая → Парковая · медленнее плана на 2.3 мин')
+    expect(segmentText({ from: 'Садовая', to: 'Парковая' })).toBe('Садовая → Парковая')
+    expect(segmentText(null)).toBe('Замедлений впереди не видно')
   })
 })

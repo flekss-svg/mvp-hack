@@ -11,12 +11,13 @@ from pathlib import Path
 from app.config import MODELS
 from app.data_sources import processed_repository as repo
 from app.engine.stream_state import load_schedule_index
-from app.model.predictor import DelayPredictor
+from app.model.predictor import DelayPredictor, DelayRegressor
 
 
 @dataclass
 class ModelArtifacts:
     predictor: DelayPredictor
+    regressor: DelayRegressor      # ожидаемое отклонение в минутах в точке прогноза
     hist_profile: dict
     schedule: dict
     route_mode: dict
@@ -26,12 +27,14 @@ class ModelArtifacts:
     @classmethod
     def load(cls, models_dir: Path = MODELS) -> "ModelArtifacts":
         predictor = DelayPredictor.load(models_dir / "delay_catboost.cbm")
+        regressor = DelayRegressor.load(models_dir / "delay_regressor.cbm")
         with open(models_dir / "hist_profile.pkl", "rb") as fh:
             hist_profile = pickle.load(fh)
         routes = repo.read_routes()
         stops = repo.read_stops()
         return cls(
             predictor=predictor,
+            regressor=regressor,
             hist_profile=hist_profile,
             schedule=load_schedule_index(repo.read_stop_times()),
             route_mode=repo.route_mode_map(routes),
