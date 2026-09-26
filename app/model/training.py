@@ -12,6 +12,10 @@ model.predictor/evaluation (обучение и оценка). Не знает �
 import json
 import pickle
 import random
+import sys
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 import pandas as pd
 
@@ -139,7 +143,7 @@ def main():
     reg.save(MODELS / "delay_regressor.cbm")
     with open(MODELS / "hist_profile.pkl", "wb") as fh:
         pickle.dump(hist, fh)
-    with open(REPORTS / "metrics.json", "w") as fh:
+    with open(REPORTS / "metrics.json", "w", encoding="utf-8") as fh:
         json.dump(res, fh, ensure_ascii=False, indent=2)
     print(json.dumps(res, ensure_ascii=False, indent=2))
 
