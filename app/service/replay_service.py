@@ -151,6 +151,8 @@ class ReplayService:
             "kpi": self._kpi(t, mode, risk, late, len(trips)),
             "vehicles": {
                 "id": trips[keep].tolist(),
+                "route": [d.route_short[d.trip_route[trip]] for trip in trips[keep]],
+                "mode": [d.modes[d.trip_mode[trip]] for trip in trips[keep]],
                 "lon": lon[keep].round(5).tolist(),
                 "lat": lat[keep].round(5).tolist(),
                 "level": level[keep].astype(int).tolist(),
@@ -257,9 +259,19 @@ class ReplayService:
         first, last = int(self._trip_first[trip_id]), int(self._trip_last[trip_id])
         r = d.trip_route[trip_id]
         head = {"route": d.route_short[r], "routeName": d.route_long[r],
-                "mode": d.modes[d.trip_mode[trip_id]]}
+                "mode": d.modes[d.trip_mode[trip_id]],
+                "routeStops": [
+                    {"name": d.stop_names[d.ev_stop[j]],
+                     "lat": round(float(d.stop_lat[d.ev_stop[j]]), 6),
+                     "lon": round(float(d.stop_lon[d.ev_stop[j]]), 6),
+                     "scheduledTime": hhmm(d.ev_plan[j]),
+                     # Replay must not reveal events beyond the selected time.
+                     "actualTime": hhmm(d.ev_fact[j]) if d.ev_fact[j] <= t else None}
+                    for j in range(first, last + 1)
+                ]}
         if not (d.ev_fact[first] <= t <= d.ev_fact[last]):
-            return {"found": True, "onLine": False, **head}
+            return {"found": True, "onLine": False, **head,
+                    "currentStopIndex": -1 if t < d.ev_fact[first] else last - first + 1}
 
         ev = first + int(np.searchsorted(d.ev_fact[first:last + 1], t, side="right")) - 1
         risk = float(d.ev_risk[ev])
@@ -271,6 +283,7 @@ class ReplayService:
             outcome = {"late": gap >= d.threshold, "delay": round(gap, 1)}
         return {
             "found": True, "onLine": True, **head,
+            "currentStopIndex": ev - first,
             "stop": d.stop_names[d.ev_stop[ev]],
             "delay": round(delay, 1),
             "risk": int(round(risk * 100)) if risk >= 0 else None,

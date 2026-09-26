@@ -14,6 +14,6 @@ describe('usePlayback', () => {
     expect(result.current.playing).toBe(true)
 
     act(() => result.current.cycleSpeed())
-    expect(result.current.speed).toBe(SPEEDS[2])
+    expect(result.current.speed).toBe(SPEEDS[3])
   })
 })

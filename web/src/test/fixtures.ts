@@ -1,5 +1,6 @@
 /** Общие ответы API для тестов — одна копия вместо трех разных. */
 import type { Alert, DayInfo, Frame, ModelQuality, Timeline, TripCard } from '../api/types'
+import type { StableIncident } from '../ui/presentation'
 
 export const day: DayInfo = {
   date: '2026-09-03',
@@ -24,6 +25,9 @@ export const alert: Alert = {
   delay: 1,
   risk: 80,
 }
+
+/** AlertList/FleetDrawer работают с уже стабилизированными инцидентами (Alert + critical). */
+export const incident: StableIncident = { ...alert, critical: false }
 
 export const trip: TripCard = {
   found: true,

@@ -19,9 +19,9 @@ test('production dashboard opens and its main API requests pass', async ({ page,
   })
 
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Раннее предупреждение задержек' })).toBeVisible()
-  await expect(page.getByText('Записанный день', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '▶ Пуск' })).toBeVisible()
-  await expect(page.getByLabel('Карта маршрутов и машин')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Контроль движения' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Симуляция' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Воспроизвести' })).toBeVisible()
+  await expect(page.getByLabel('Yandex Map Москвы')).toBeVisible()
   expect(errors).toEqual([])
 })

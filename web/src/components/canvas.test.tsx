@@ -16,12 +16,15 @@ const context = {
   fill: vi.fn(),
   fillText: vi.fn(),
   measureText: vi.fn(() => ({ width: 24 })),
+  closePath: vi.fn(),
+  rect: vi.fn(),
   fillStyle: '',
   strokeStyle: '',
   lineWidth: 1,
   lineCap: 'butt',
   globalAlpha: 1,
   font: '',
+  textAlign: 'start',
 }
 
 beforeEach(() => {
@@ -57,19 +60,17 @@ beforeEach(() => {
   })
 })
 
-describe('Timeline canvas', () => {
-  it('draws data and seeks with pointer interaction', () => {
+describe('Timeline', () => {
+  it('draws data and seeks with the range input', () => {
     const onSeek = vi.fn()
     render(<Timeline data={timeline} t={500} onSeek={onSeek} />)
-    const canvas = screen.getByLabelText('Шкала времени: число машин с высоким риском')
 
     expect(context.fillRect).toHaveBeenCalled()
     expect(context.fillText).toHaveBeenCalled()
-    fireEvent(canvas, new MouseEvent('pointerdown', { bubbles: true, clientX: 400 }))
-    expect(onSeek).toHaveBeenLastCalledWith(500)
-    fireEvent(canvas, new MouseEvent('pointermove', { bubbles: true, clientX: 800 }))
-    expect(onSeek).toHaveBeenLastCalledWith(600)
-    fireEvent(canvas, new MouseEvent('pointerup', { bubbles: true }))
+
+    const slider = screen.getByRole('slider', { name: 'Время записанного дня' })
+    fireEvent.change(slider, { target: { value: '600' } })
+    expect(onSeek).toHaveBeenCalledWith(600)
   })
 })
 

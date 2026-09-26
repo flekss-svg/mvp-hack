@@ -14,17 +14,47 @@ export interface Kpi {
   hint?: string
 }
 
-export interface Alert {
+/** Optional presentation context; currently supplied by the synthetic source only. */
+export interface ForecastContext {
+  currentTime?: string
+  forecastReason?: string
+  problemSegment?: { from: string; to: string; index: number }
+  forecastTime?: string
+  forecastStop?: string
+  scheduledArrival?: string
+  expectedArrival?: string
+  expectedDelay?: number
+  averageSpeed?: number
+  dwellMinutes?: number
+}
+
+export interface Alert extends ForecastContext {
   tripId: number
   route: string
   mode: string
   dest: string
   stop: string
+  /** Signed minutes: negative = ahead of schedule, positive = late. */
   delay: number
   risk: number
+  forecastMinutes?: number
+  forecastDelay?: number
 }
 
-export interface TripCard {
+export interface RouteStop {
+  name: string
+  lat: number
+  lon: number
+  scheduledTime?: string
+  /** Only populated after the stop has been reached at the selected replay time. */
+  actualTime?: string | null
+}
+
+export interface TripCard extends ForecastContext {
+  /** Ordered stops of this trip's direction; not a road-snapped route. */
+  routeStops?: RouteStop[]
+  /** Last reached stop; -1 before departure, routeStops.length after completion. */
+  currentStopIndex?: number | null
   found: boolean
   onLine: boolean
   route: string
@@ -36,6 +66,9 @@ export interface TripCard {
   level?: RiskLevel
   outcome?: { late: boolean; delay: number } | null
   next?: { stop: string; plan: string }[]
+  tripId?: number
+  forecastMinutes?: number
+  forecastDelay?: number
 }
 
 export interface DayInfo {
@@ -65,6 +98,8 @@ export interface Vehicles {
   level: RiskLevel[]
   risk: number[]
   late: number[]
+  route?: string[]
+  mode?: string[]
 }
 
 /** [индекс перегона, ступень (0 медленно · 1 сильно), среднее превышение в минутах] */
@@ -94,6 +129,23 @@ export interface LiveSnapshot {
   tracked: number
   kpi: Kpi[]
   alerts: Alert[]
+  /** Live stream adapter input; this must never be populated from replay responses. */
+  vehicles?: LiveVehicle[]
+  trips?: Record<number, TripCard>
+}
+
+export interface LiveVehicle {
+  vehicleId: string | number
+  tripId?: string | number
+  route?: string
+  mode?: string
+  lat: number
+  lon: number
+  speed?: number
+  risk?: number | null
+  level?: RiskLevel | null
+  delay?: number | null
+  updatedAt?: string | number
 }
 
 export interface ModelQuality {

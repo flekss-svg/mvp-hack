@@ -1,43 +1,19 @@
-import type { Alert } from '../api/types'
+import type { StableIncident } from '../ui/presentation'
+import { currentText, expectedArrival, expectedDelayText, horizonText, riskText, updatedText } from '../ui/presentation'
+import { ChangedValue } from './ChangedValue'
+import { Icon } from './Icon'
 
-interface Props {
-  title: string
-  alerts: Alert[]
-  selected: number | null
-  onSelect?: (tripId: number) => void
-  empty: string
-}
-
-/** Машины, которые сейчас идут по графику, но опоздают. Порядок задает сервер. */
-export function AlertList({ title, alerts, selected, onSelect, empty }: Props) {
-  return (
-    <div className="alerts">
-      <h2>{title}</h2>
-      {alerts.length === 0 ? (
-        <p className="empty">{empty}</p>
-      ) : (
-        <ul>
-          {alerts.map((a) => (
-            <li key={a.tripId}>
-              <button
-                className={`alert${a.tripId === selected ? ' on' : ''}`}
-                onClick={() => onSelect?.(a.tripId)}
-                disabled={!onSelect}
-              >
-                <span className={`badge badge-${a.mode}`}>{a.route}</span>
-                <span className="alert-body">
-                  <span className="alert-dest">{a.dest ? `→ ${a.dest}` : a.stop}</span>
-                  <span className="alert-sub">
-                    сейчас {a.delay >= 0 ? '+' : ''}
-                    {a.delay.toFixed(1)} мин · {a.stop}
-                  </span>
-                </span>
-                <span className="alert-risk">{a.risk}%</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
+interface Props { alerts: StableIncident[]; onSelect: (id: number) => void; empty: string; updatedAt: number | null; now: number }
+export function AlertList({ alerts, onSelect, empty, updatedAt, now }: Props) {
+  return <div className="alerts">{!alerts.length ? <div className="empty-alerts"><Icon name="signal" size={26} /><p>{empty}</p></div> : <ul>{alerts.map((a, index) => <li key={a.tripId}>
+    <button className={`alert${index === 0 ? ' alert-hero' : ' alert-compact'}${a.critical ? ' alert-priority' : ''}`} data-trip-id={a.tripId} onClick={() => onSelect(a.tripId)}>
+      <span className="alert-top"><span className={`route-badge badge-${a.mode}`} aria-label={`Маршрут ${a.route}`}>{a.route}</span><span className="vehicle-id">{a.mode === 'tram' ? 'Трамвай' : 'Автобус'} · ТС {a.tripId}</span><ChangedValue className="alert-risk" value={riskText(a.risk)} /></span>
+      <span className="alert-dest" title={`${a.stop} → ${a.dest}`}><b>{a.stop || 'Остановка не передана'}</b> <span aria-hidden="true">→</span> <b>{a.dest || 'Направление не передано'}</b></span>
+      <span className="incident-current"><span className="comparison-label">{a.currentTime ? `Сейчас · ${a.currentTime}` : 'Сейчас'}</span><ChangedValue value={currentText(a.delay)} /></span>
+      <span className="incident-forecast"><span className="forecast-heading"><span className="comparison-label">Прогноз</span><span>{a.forecastMinutes === undefined ? '' : horizonText(a.forecastMinutes)}</span></span>
+        {a.forecastStop || a.scheduledArrival || a.expectedArrival || a.forecastDelay !== undefined ? <span className="arrival-forecast"><b>{a.forecastStop || 'Остановка прогноза не передана'}</b>{a.scheduledArrival && <span><i>По расписанию</i><time>{a.scheduledArrival}</time></span>}{expectedArrival(a.scheduledArrival, a.expectedArrival, a.expectedDelay ?? a.forecastDelay) && <span><i>Ожидаемое прибытие</i><time>{expectedArrival(a.scheduledArrival, a.expectedArrival, a.expectedDelay ?? a.forecastDelay)}</time></span>}{expectedDelayText(a.expectedDelay ?? a.forecastDelay) && <span><i>Ожидаемое опоздание</i><strong>{expectedDelayText(a.expectedDelay ?? a.forecastDelay)}</strong></span>}</span> : <span className="forecast-unavailable">Прогноз времени прибытия пока недоступен</span>}</span>
+      <span className="incident-context"><span><span>Причина</span><span>{a.forecastReason || 'Не передана сервисом'}</span></span><span><span>Участок</span><span>{a.problemSegment ? `${a.problemSegment.from} → ${a.problemSegment.to}` : 'Не передан сервисом'}</span></span></span>
+      <span className="alert-bottom"><span className="risk-text"><Icon name="warning" size={12} />{a.critical ? 'Критический риск' : 'Высокий риск'}</span><span className="incident-age">{updatedText(updatedAt, now)}</span></span>
+    </button>
+  </li>)}</ul>}</div>
 }

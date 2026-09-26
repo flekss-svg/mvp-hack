@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-export const SPEEDS = [15, 60, 300]
+export const SPEEDS = [1, 5, 10, 30, 60]
 /** Как часто отпускаем новое время наружу: каждое значение — это запрос кадра к API. */
 const COMMIT_MS = 120
 
@@ -17,11 +17,13 @@ export interface Playback {
  * Часы воспроизведения записанного дня. Здесь живет только позиция ползунка — все, что
  * показывается на этот момент, приходит с сервера (GET /api/replay/frame).
  */
-export function usePlayback(bounds: { tMin: number; tMax: number } | null): Playback {
+export function usePlayback(bounds: { tMin: number; tMax: number } | null, active = true, autoplay = false): Playback {
   const [t, setT] = useState<number | null>(null)
-  const [playing, setPlaying] = useState(false)
-  const [speed, setSpeed] = useState(60)
+  const [playing, setPlaying] = useState(autoplay)
+  const [speed, setSpeed] = useState(10)
   const clock = useRef(0)
+  const tMin = bounds?.tMin
+  const tMax = bounds?.tMax
 
   useEffect(() => {
     if (bounds && t === null) {
@@ -33,7 +35,7 @@ export function usePlayback(bounds: { tMin: number; tMax: number } | null): Play
   }, [bounds, t])
 
   useEffect(() => {
-    if (!playing || !bounds) return
+    if (!playing || !active || tMin === undefined || tMax === undefined) return
     let raf = 0
     let last = performance.now()
     let sinceCommit = 0
@@ -42,7 +44,7 @@ export function usePlayback(bounds: { tMin: number; tMax: number } | null): Play
       const dt = now - last
       last = now
       clock.current += (dt / 1000) * (speed / 60)
-      if (clock.current > bounds.tMax) clock.current = bounds.tMin
+      if (clock.current > tMax) clock.current = tMin
       sinceCommit += dt
       if (sinceCommit >= COMMIT_MS) {
         sinceCommit = 0
@@ -52,9 +54,10 @@ export function usePlayback(bounds: { tMin: number; tMax: number } | null): Play
     }
     raf = requestAnimationFrame(step)
     return () => cancelAnimationFrame(raf)
-  }, [playing, speed, bounds])
+  }, [playing, speed, tMin, tMax, active])
 
   const seek = useCallback((next: number) => {
+    setPlaying(false)
     clock.current = next
     setT(next)
   }, [])
@@ -63,6 +66,7 @@ export function usePlayback(bounds: { tMin: number; tMax: number } | null): Play
     () => setSpeed((s) => SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length]),
     [],
   )
+  const toggle = useCallback(() => setPlaying((p) => !p), [])
 
-  return { t, playing, speed, toggle: () => setPlaying((p) => !p), cycleSpeed, seek }
+  return { t, playing, speed, toggle, cycleSpeed, seek }
 }

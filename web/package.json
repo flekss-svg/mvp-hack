@@ -24,6 +24,7 @@
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.1.0",
     "@vitest/coverage-v8": "^5.0.2",
+    "@yandex/ymaps3-types": "^1.0.21108841",
     "jsdom": "^26.1.0",
     "typescript": "~5.9.0",
     "vite": "^7.1.0",

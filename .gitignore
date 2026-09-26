@@ -17,6 +17,10 @@ web/test-results/
 web/playwright-report/
 web/*.tsbuildinfo
 web/*.local
+web/.env
+web/.env.*
+!web/.env.example
+web/.checks/
 
 .DS_Store
 
