@@ -21,7 +21,7 @@ export interface YGeoObject21 {
   geometry: { setCoordinates: (coordinates: [number, number] | [number, number][]) => void }
   properties: { set: (values: Record<string, unknown>) => void }
   options: { set: (values: Record<string, unknown>) => void }
-  events: { add: (event: string, callback: (event: { preventDefault: () => void }) => void) => void }
+  events: { add: (event: string, callback: (event: { preventDefault: () => void; stopPropagation: () => void }) => void) => void }
 }
 
 export interface YPlacemark21 extends YGeoObject21 {}

@@ -3,6 +3,7 @@ import type { DayInfo, SlowSegment } from '../api/types'
 import { MAP_KEY, loadYandex, MOSCOW } from '../maps/yandex'
 import type { YGeoObject21, YMap21, YMaps21, YPlacemark21 } from '../maps/yandex'
 import type { MapVehicle } from '../maps/vehicles'
+import { vehicleMarkerTemplate } from '../maps/vehicleMarker'
 import type { DisplaySettings } from '../ui/display'
 
 interface Props {
@@ -66,21 +67,26 @@ export function TransportMap({ day, vehicles, slowSegments, selected, focusToken
       const key = String(vehicle.vehicleId)
       const selectedMarker = selected === vehicle.vehicleId
       const currentLevel = level(vehicle)
-      const route = display.routeNumbers ? vehicle.route || '—' : '•'
-      const label = `ТС ${vehicle.vehicleId}: ${riskLabels[currentLevel]}${vehicle.risk == null ? '' : `, ${Math.round(vehicle.risk)}%`}`
-      const className = `ym-vehicle-marker level-${currentLevel}${selectedMarker ? ' is-selected' : ''}`
+      const mode = vehicle.mode === 'tram' || vehicle.mode === 'bus' ? vehicle.mode : 'unknown'
+      const route = display.routeNumbers ? vehicle.route || '—' : ''
+      const label = `${mode === 'tram' ? 'Трамвай' : mode === 'bus' ? 'Автобус' : 'Транспорт'}${vehicle.route ? ` ${vehicle.route}` : ''}, ТС ${vehicle.vehicleId}: ${riskLabels[currentLevel]}${currentLevel === 3 || vehicle.risk == null ? '' : `, ${Math.round(vehicle.risk)}%`}`
+      const className = `ym-vehicle-marker vehicle-${mode} level-${currentLevel}${selectedMarker ? ' is-selected' : ''}${display.routeNumbers ? '' : ' without-route'}`
       let marker = markers.current.get(key)
       if (!marker) {
         marker = new sdk.Placemark([vehicle.lat, vehicle.lon], {}, {
-          iconLayout: sdk.templateLayoutFactory.createClass('<button type="button" class="$[properties.className]" aria-label="$[properties.label]">$[properties.route]</button>'),
-          iconShape: { type: 'Circle', coordinates: [0, 0], radius: 18 }, iconOffset: [-18, -18], hideIconOnBalloonOpen: false,
+          iconLayout: sdk.templateLayoutFactory.createClass(vehicleMarkerTemplate),
+          iconShape: { type: 'Rectangle', coordinates: [[-18, -29], [18, 29]] }, hideIconOnBalloonOpen: false,
         })
-        marker.events.add('click', (event) => { event.preventDefault(); selectedRef.current(vehicle.vehicleId) })
+        marker.events.add('click', (event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          selectedRef.current(vehicle.vehicleId)
+        })
         markers.current.set(key, marker)
         map.geoObjects.add(marker)
       }
       marker.geometry.setCoordinates([vehicle.lat, vehicle.lon])
-      marker.properties.set({ className, label, route, hintContent: label })
+      marker.properties.set({ className, label, route, vehicleKey: key, hintContent: label })
       marker.options.set({ zIndex: selectedMarker ? 1000 : currentLevel === 2 ? 600 : currentLevel === 1 ? 400 : 200 })
     })
     segmentLines.current.forEach((line) => map.geoObjects.remove(line))
@@ -105,7 +111,15 @@ export function TransportMap({ day, vehicles, slowSegments, selected, focusToken
 
   const zoom = (delta: number) => { const map = mapRef.current; if (map) map.setZoom(Math.max(9, Math.min(19, map.getZoom() + delta)), { duration: 150 }) }
   return <div className="transport-map">
-    <div ref={host} className="yandex-host" aria-label="Yandex Map Москвы" />
+    <div ref={host} className="yandex-host" aria-label="Yandex Map Москвы" onClickCapture={(event) => {
+      // Keyboard activation uses the button; pointer clicks use the SDK hotspot above.
+      const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('.ym-vehicle-marker') : null
+      const vehicle = button && vehicles.find((item) => String(item.vehicleId) === button.dataset.vehicleId)
+      if (!vehicle) return
+      event.preventDefault()
+      event.stopPropagation()
+      onSelect(vehicle.vehicleId)
+    }} />
     {status !== 'ready' && <div className="map-notice" role="status"><span className="notice-icon">⌖</span><div><strong>{status === 'missing' ? 'Для отображения карты добавьте VITE_YANDEX_MAPS_API_KEY в web/.env' : status === 'error' ? 'Не удалось загрузить карту' : 'Подключаем Yandex Maps…'}</strong><span>{status === 'missing' ? 'После добавления ключа перезапустите dev-сервер.' : 'Географическая подложка будет доступна после загрузки.'}</span></div>{status === 'error' && <button onClick={() => setAttempt((value) => value + 1)}>Повторить</button>}</div>}
     {status === 'ready' && <div className="map-zoom"><button aria-label="Приблизить" onClick={() => zoom(1)}>+</button><button aria-label="Отдалить" onClick={() => zoom(-1)}>−</button><button aria-label="Показать Москву" onClick={() => mapRef.current?.setCenter(MOSCOW, 11, { duration: 250 })}>⌖</button></div>}
     {status === 'ready' && <span className="map-caption">МОСКВА · YANDEX MAPS</span>}

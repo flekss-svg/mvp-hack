@@ -98,15 +98,23 @@ summary { cursor: pointer; }
 .bar { display: inline-block; width: 12px; height: 3px; border-radius: 2px; }
 .bar-slow { background: var(--slow); }
 .bar-slow-strong { background: var(--slow-strong); height: 4px; }
-.ym-vehicle-marker { transform: translate(-50%, -50%); display: grid; place-items: center; min-width: 30px; height: 30px; padding: 0 5px; color: #fff; background: var(--low); border: 2px solid #fff; border-radius: 50%; box-shadow: 0 2px 6px #1d2c3b3d; font-size: 10px; font-weight: 700; line-height: 1; white-space: nowrap; }
-.ym-vehicle-marker.level-1 { color: #493807; background: #e0b64b; border-radius: 3px; clip-path: polygon(50% 0, 100% 100%, 0 100%); padding: 8px 4px 0; }
-.ym-vehicle-marker.level-2 { min-width: 32px; background: var(--high); border-radius: 4px; transform: translate(-50%, -50%) rotate(45deg); }
-.ym-vehicle-marker.level-2::first-letter { font-size: 0; }
-.ym-vehicle-marker.level-2 { text-indent: -999px; }
-.ym-vehicle-marker.level-2::after { content: '!'; position: absolute; text-indent: 0; font-size: 14px; transform: rotate(-45deg); }
-.ym-vehicle-marker.level-3 { color: #fff; background: #7d8a94; border-radius: 3px; }
-.ym-vehicle-marker.is-selected { outline: 3px solid var(--sel); outline-offset: 4px; box-shadow: 0 0 0 7px #ffffffd9, 0 2px 6px #1d2c3b3d; }
-.ym-vehicle-marker:hover:not(:disabled) { filter: brightness(.9); border-color: #fff; }
+/* Vehicle artwork and its separate, smaller risk indicator. */
+.ym-vehicle-marker { position: relative; transform: translate(-18px, -25px); display: block; width: 36px; height: 50px; padding: 0; border: 0; border-radius: 8px; background: transparent; overflow: visible; white-space: nowrap; }
+.ym-vehicle-marker:hover:not(:disabled) { background: #ffffff80; border: 0; }
+.vehicle-model { position: absolute; top: 8px; left: 0; width: 36px; height: 36px; overflow: visible; filter: drop-shadow(0 1px 1px #fff) drop-shadow(0 2px 2px #20374b40); pointer-events: none; }
+.vehicle-model-tram, .vehicle-tram .vehicle-model-bus, .vehicle-unknown .vehicle-model-bus, .vehicle-model-unknown { display: none; }
+.vehicle-unknown .vehicle-model-unknown { position: absolute; top: 13px; left: 4px; display: grid; place-items: center; width: 28px; height: 26px; border: 2px solid #fff; border-radius: 6px; background: #6e7d89; color: #fff; font-size: 10px; font-weight: 700; }
+.vehicle-tram .vehicle-model-tram { display: block; }
+.vehicle-risk { position: absolute; z-index: 1; top: -4px; left: 11px; display: grid; place-items: center; width: 14px; height: 14px; background: var(--low); border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 3px #20374b50; pointer-events: none; }
+.vehicle-risk > span { display: none; }
+.level-1 .vehicle-risk { top: -5px; left: 9px; width: 18px; height: 17px; border: 0; border-radius: 0; background: #fff; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.level-1 .vehicle-risk::after { content: ''; position: absolute; inset: 3px 3px 2px; background: #e3ac25; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.level-2 .vehicle-risk { background: var(--high); border-radius: 3px; transform: rotate(45deg); }
+.level-2 .vehicle-risk > span { display: block; color: #fff; font: 800 11px/10px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; transform: rotate(-45deg); }
+.level-3 .vehicle-risk { background: #7d8a94; border-radius: 2px; }
+.vehicle-route { position: absolute; top: 39px; left: 50%; transform: translateX(-50%); min-width: 19px; padding: 1px 3px; border: 1px solid #d2dce4; border-radius: 4px; background: #fffffff5; color: #233f53; box-shadow: 0 1px 3px #20374b26; font-size: 9px; font-weight: 700; line-height: 11px; pointer-events: none; }
+.without-route .vehicle-route { display: none; }
+.ym-vehicle-marker.is-selected { background: #ffffffcc; outline: 2px solid var(--sel); outline-offset: 3px; box-shadow: 0 0 0 5px #ffffffb3; }
 .telemetry-wait { position: absolute; left: 16px; bottom: 16px; display: flex; align-items: flex-start; gap: 8px; max-width: 310px; padding: 9px 11px; border: 1px solid #d7e0e6; border-radius: 5px; background: #fffffff0; color: #63798a; font-size: 11px; z-index: 2; }
 .telemetry-wait .status-dot { margin-top: 4px; color: #748898; }
 .telemetry-wait strong, .telemetry-wait span:last-child { display: block; }
@@ -511,8 +519,6 @@ summary { cursor: pointer; }
 .map-caption { right: 18px; bottom: 32px; padding: 5px 7px; border-radius: 5px; font-weight: 600; }
 .legend { bottom: 32px; left: 18px; padding: 8px 10px; border-color: #dce5e9; border-radius: 8px; box-shadow: 0 4px 12px rgba(27, 47, 63, .06); }
 .legend summary { color: #4f6678; font-weight: 650; }
-.ym-vehicle-marker { border-width: 2px; box-shadow: 0 3px 9px rgba(19, 38, 52, .24); }
-.ym-vehicle-marker.is-selected { outline-width: 3px; outline-offset: 4px; box-shadow: 0 0 0 7px rgba(255, 255, 255, .9), 0 4px 11px rgba(22, 46, 65, .28); }
 
 .aside { border-left-color: #dce5ec; background: #f5f7fa; box-shadow: -8px 0 20px rgba(28, 48, 66, .045); }
 .aside-heading { position: sticky; top: 0; z-index: 4; padding: 20px 18px 16px; border-bottom: 1px solid #e1e8ee; background: rgba(255, 255, 255, .97); box-shadow: 0 3px 10px rgba(35, 54, 70, .025); }

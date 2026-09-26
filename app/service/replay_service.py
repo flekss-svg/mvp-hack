@@ -99,6 +99,8 @@ class ReplayService:
             "kpi": self._kpi(t, mode, risk, late, len(trips)),
             "vehicles": {
                 "id": trips[keep].tolist(),
+                "route": [d.route_short[d.trip_route[trip]] for trip in trips[keep]],
+                "mode": [d.modes[d.trip_mode[trip]] for trip in trips[keep]],
                 "lon": lon[keep].round(5).tolist(),
                 "lat": lat[keep].round(5).tolist(),
                 "level": level[keep].astype(int).tolist(),
