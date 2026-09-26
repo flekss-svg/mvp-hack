@@ -1,5 +1,6 @@
 """Задача 3: CatBoost v2 = признаки v1 + телеметрия. Сравнение с v1 и файл сдачи.
 Запуск из корня проекта: python scripts/model_v2.py"""
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -7,7 +8,8 @@ import pandas as pd
 from catboost import CatBoostRegressor
 from sklearn.model_selection import GroupKFold
 
-from telemetry_features import build, load_plan, load_traffic, to_ts
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from ml_service.features import base_features, build, load_plan, load_points, load_traffic
 
 ROOT = Path(__file__).resolve().parent.parent
 D = ROOT / "data" / "hackathon"
@@ -18,21 +20,6 @@ PARAMS = dict(loss_function="MAE", depth=4, learning_rate=0.03, l2_leaf_reg=10, 
 
 def mae(y, p):
     return float(np.mean(np.abs(np.asarray(y, float) - np.asarray(p, float))))
-
-
-def load_points(path):
-    df = pd.read_csv(path, dtype={"sample_id": str, "tr_id": str, "target_stop_id": str})
-    df["T_s"] = to_ts(df["T"])
-    df["tgt_s"] = to_ts(df["target_time_begin"])
-    return df
-
-
-def base_features(df):
-    X = pd.DataFrame(index=df.index)
-    X["cur_dev_s"] = df["cur_dev_s"]
-    X["horizon_s"] = df["tgt_s"] - df["T_s"]
-    X["tgt_min_of_day"] = (df["tgt_s"] % 86400) / 60
-    return X
 
 
 def full_features(pts, part, plan_file):
