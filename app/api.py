@@ -22,6 +22,7 @@
 Собранный фронтенд (web/dist) отдается статикой в корне — сервис и дашборд поднимаются
 одной командой.
 """
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -33,13 +34,14 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.config import HORIZON_MIN, LATE_THRESHOLD_MIN, LIVE_MAX_AGE_S, REPORTS, WEB_DIST
+from app.config import HORIZON_MIN, LATE_THRESHOLD_MIN, LIVE_MAX_AGE_S, PLAN_TZ_OFFSET_S, REPORTS, WEB_DIST
 from app.service.live_view import live_snapshot as build_live_snapshot
 from app.service.ndtp_server import NdtpServer
 from app.engine.feature_definitions import FEATURE_DESCRIPTIONS
 from app.model.artifacts import ModelArtifacts
 from app.service.replay_service import ReplayService
 from app.service.risk_service import RiskService
+from ml_service.live import LiveForecaster, load_forecaster
 
 # Подключения терминалов — в консоль uvicorn: первым делом смотрят, дошел ли терминал до нас.
 _ndtp_log = logging.getLogger("ndtp")
@@ -47,11 +49,32 @@ _ndtp_log.setLevel(logging.INFO)
 _ndtp_log.handlers = logging.getLogger("uvicorn").handlers
 _ndtp_log.propagate = False
 
-_ndtp = NdtpServer()
+# Прогноз по потоку NDTP на моделях хакатона (ml_service/live.py). Поднимается вместе с сервисом,
+# чтобы отметки копились с первого пакета; не поднялся — live работает как раньше, без прогнозов.
+_forecaster: LiveForecaster | None = None
+_forecaster_error: str | None = None
+
+
+def _load_forecaster() -> None:
+    global _forecaster, _forecaster_error
+    try:
+        _forecaster, _forecaster_error = load_forecaster(tz_offset_s=PLAN_TZ_OFFSET_S), None
+    except Exception as e:  # noqa: BLE001 — причина уходит в /api/health
+        _forecaster, _forecaster_error = None, f"{type(e).__name__}: {e}"
+        logging.getLogger("uvicorn.error").warning("прогноз по NDTP недоступен: %s", _forecaster_error)
+
+
+def _on_fix(fix) -> None:
+    if _forecaster is not None:
+        _forecaster.ingest(fix)
+
+
+_ndtp = NdtpServer(on_fix=_on_fix)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    await asyncio.to_thread(_load_forecaster)
     await _ndtp.start()
     yield
     await _ndtp.stop()
@@ -138,6 +161,7 @@ def health():
             "replay": {"ready": _replay.ready, "error": _replay.error},
             "live": {"ready": _live.ready, "error": _live.error},
             "ndtp": {"ready": _ndtp.listening, "error": _ndtp.error},
+            "forecast": {"ready": _forecaster is not None, "error": _forecaster_error},
         },
         "tripsInSchedule": _live.get().schedule_size if _live.ready else 0,
     }
@@ -192,7 +216,8 @@ def live_snapshot():
     """Позиции машин из NDTP + прогнозы. Позиции от модели не зависят: если артефакты не
     загрузились, машины все равно видны на карте, просто без риска."""
     risk = _live.get().snapshot() if _live.ready else None
-    return build_live_snapshot(_ndtp.positions(LIVE_MAX_AGE_S), risk)
+    forecasts = _forecaster.forecasts() if _forecaster is not None else None
+    return build_live_snapshot(_ndtp.positions(LIVE_MAX_AGE_S), risk, forecasts)
 
 
 @app.get("/api/live/units")

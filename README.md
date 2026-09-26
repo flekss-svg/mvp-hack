@@ -117,10 +117,28 @@ npm --prefix web run dev                    # терминал 2: http://localho
 |---|---|
 | `explore.py` | Проверки данных и простые правила на test |
 | `model_v1.py` | Проверка часового пояса, линейная модель и CatBoost на 3 признаках |
-| `telemetry_features.py` | Признаки из телеметрии на момент прогноза (только данные до этого момента) |
+| `telemetry_features.py` | Совместимость: признаки переехали в `ml_service/features.py` |
 | `model_v2.py` | CatBoost v2: признаки v1 + телеметрия. Файл сдачи и `models/hackathon_v2_catboost.cbm` |
+| `model_classifier.py` | Вероятности early / ontime / late, сравнение с правилом «по регрессору» → `models/hackathon_v2_classifier.cbm` |
+| `show_reasons.py` | 10 примеров «прогноз → причины» на test и покрытие причин |
+| `check_service.py` | Проверка онлайн-оценки `cur_dev_s`: `python3 scripts/check_service.py test` (и `train`) |
+| `model_city.py` | v3: «обстановка в городе» вместо `tgt_min_of_day` → `models/hackathon_v3_city.cbm` |
+| `model_online.py` | Модели для live-режима (учатся на нашей оценке `cur_dev_s`) → `models/hackathon_v2_online*.cbm` |
+| `ndtp_replay.py` | Проигрывает треки хакатона в приемник NDTP обычными пакетами, чтобы показать live без Docker |
 
 Запуск из корня: `python3 scripts/model_v2.py`. Файлы сдачи попадают в `submissions/` (в git не хранится).
+
+Код, который работает и в обучении, и в сервисе, лежит в пакете `ml_service/`:
+
+| Модуль | Что делает |
+|---|---|
+| `features.py` | Единственное место, где считаются признаки (24 у v2 + «город» у v3) |
+| `models.py` | Гиперпараметры и обучение регрессора и классификатора; `predict_class_probs(X)` |
+| `reasons.py` | Причины прогноза: SHAP → фразы для диспетчера. Словарь `REASONS` правится без программиста |
+| `cur_dev.py` | Онлайн-оценка `cur_dev_s` по телеметрии и расписанию (в живом потоке его никто не присылает) |
+| `live.py` | Прогноз по потоку NDTP: буфер отметок, целевая остановка, признаки, модель. Питает режим Live дашборда, см. `docs/ndtp-emulator.md` |
+
+Новые модели (классификатор, v3) сохраняются под своими именами и не затирают файлы v2. Обратите внимание: сам `model_v2.py` при запуске перезаписывает `models/hackathon_v2_catboost.cbm` (предсказания те же, байты файла отличаются).
 
 ## Результаты MVP (синтетика, отложенная неделя)
 

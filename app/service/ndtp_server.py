@@ -17,6 +17,7 @@ import logging
 import socket
 import time
 from dataclasses import asdict, dataclass, field
+from typing import Callable
 
 from app.config import NDTP_HOST, NDTP_PORT, NDTP_VERIFY_CRC
 from app.data_sources.ndtp_protocol import (NPH_CONN_REQUEST, SERVICE_GENERIC_CONTROLS, Fix,
@@ -68,8 +69,10 @@ class _Conn:
 
 
 class NdtpServer:
-    def __init__(self, host: str = NDTP_HOST, port: int = NDTP_PORT, verify_crc: bool = NDTP_VERIFY_CRC):
+    def __init__(self, host: str = NDTP_HOST, port: int = NDTP_PORT, verify_crc: bool = NDTP_VERIFY_CRC,
+                 on_fix: Callable[[Fix], None] | None = None):
         self._host, self._port, self._verify_crc = host, port, verify_crc
+        self._on_fix = on_fix
         self._server: asyncio.Server | None = None
         self._conns: set[_Conn] = set()
         self._units: dict[int, UnitState] = {}
@@ -172,6 +175,11 @@ class NdtpServer:
         unit.fix = fix
         unit.packets += 1
         self.stats.fixes += 1
+        if self._on_fix is not None:
+            try:
+                self._on_fix(fix)
+            except Exception:  # noqa: BLE001 — сбой подписчика не должен рвать соединение с терминалом
+                log.exception("on_fix: ошибка обработки отметки машины %d", fix.unit_id)
         log.debug("машина %d: %.6f, %.6f  достоверно=%s  %d км/ч  курс %d°  gps_time=%d",
                   fix.unit_id, fix.lat, fix.lon, fix.location_valid, fix.speed, fix.course, fix.gps_time)
 
