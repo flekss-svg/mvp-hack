@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
-import type { DayInfo, SlowSegment } from '../api/types'
+import type { DayInfo, RouteStop, SlowSegment } from '../api/types'
 import { MAP_KEY, loadYandex, MOSCOW } from '../maps/yandex'
 import type { YGeoObject21, YMap21, YMaps21, YPlacemark21 } from '../maps/yandex'
 import type { MapVehicle } from '../maps/vehicles'
 import { vehicleMarkerTemplate } from '../maps/vehicleMarker'
+import { escapeMapText, routeLabels } from '../maps/routeLabels'
 import type { DisplaySettings } from '../ui/display'
+import { RouteStopsPanel } from './RouteStopsPanel'
 
 interface Props {
   day: DayInfo | null
   vehicles: MapVehicle[]
   slowSegments: SlowSegment[]
   selected: string | number | null
+  routeStops?: RouteStop[]
+  currentStopIndex?: number | null
   focusToken: number
   display: DisplaySettings
   onSelect: (id: string | number | null) => void
@@ -21,7 +25,7 @@ const riskLabels = ['Низкий риск', 'Средний риск', 'Выс�
 const coord = ([lon, lat]: [number, number]): [number, number] => [lat, lon]
 
 /** A single map implementation for replay now and independently-normalized live vehicles later. */
-export function TransportMap({ day, vehicles, slowSegments, selected, focusToken, display, onSelect }: Props) {
+export function TransportMap({ day, vehicles, slowSegments, selected, routeStops, currentStopIndex, focusToken, display, onSelect }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const mapRef = useRef<YMap21 | null>(null)
   const sdkRef = useRef<YMaps21 | null>(null)
@@ -29,6 +33,10 @@ export function TransportMap({ day, vehicles, slowSegments, selected, focusToken
   const segmentLines = useRef<YGeoObject21[]>([])
   const selectedRef = useRef(onSelect)
   const focused = useRef('')
+  const fitRoute = useRef<(() => void) | null>(null)
+  const stops = selected === null ? [] : (routeStops ?? []).filter((stop) => Number.isFinite(stop.lat) && Number.isFinite(stop.lon))
+  // Stable across playback frames: don't rebuild static geometry for every risk update.
+  const routeKey = JSON.stringify(stops.map(({ name, lat, lon }) => ({ name, lat, lon })))
   const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'missing'>(MAP_KEY ? 'loading' : 'missing')
   const [attempt, setAttempt] = useState(0)
   selectedRef.current = onSelect
@@ -70,7 +78,7 @@ export function TransportMap({ day, vehicles, slowSegments, selected, focusToken
       const mode = vehicle.mode === 'tram' || vehicle.mode === 'bus' ? vehicle.mode : 'unknown'
       const route = display.routeNumbers ? vehicle.route || '—' : ''
       const label = `${mode === 'tram' ? 'Трамвай' : mode === 'bus' ? 'Автобус' : 'Транспорт'}${vehicle.route ? ` ${vehicle.route}` : ''}, ТС ${vehicle.vehicleId}: ${riskLabels[currentLevel]}${currentLevel === 3 || vehicle.risk == null ? '' : `, ${Math.round(vehicle.risk)}%`}`
-      const className = `ym-vehicle-marker vehicle-${mode} level-${currentLevel}${selectedMarker ? ' is-selected' : ''}${display.routeNumbers ? '' : ' without-route'}`
+      const className = `ym-vehicle-marker vehicle-${mode} level-${currentLevel}${selectedMarker ? ' is-selected' : selected !== null ? ' is-muted' : ''}${display.routeNumbers ? '' : ' without-route'}`
       let marker = markers.current.get(key)
       if (!marker) {
         marker = new sdk.Placemark([vehicle.lat, vehicle.lon], {}, {
@@ -87,7 +95,7 @@ export function TransportMap({ day, vehicles, slowSegments, selected, focusToken
       }
       marker.geometry.setCoordinates([vehicle.lat, vehicle.lon])
       marker.properties.set({ className, label, route, vehicleKey: key, hintContent: label })
-      marker.options.set({ zIndex: selectedMarker ? 1000 : currentLevel === 2 ? 600 : currentLevel === 1 ? 400 : 200 })
+      marker.options.set({ zIndex: selectedMarker ? 1200 : currentLevel === 2 ? 600 : currentLevel === 1 ? 400 : 200 })
     })
     segmentLines.current.forEach((line) => map.geoObjects.remove(line))
     segmentLines.current = []
@@ -109,6 +117,53 @@ export function TransportMap({ day, vehicles, slowSegments, selected, focusToken
     if (selected === null) focused.current = ''
   }, [day, vehicles, slowSegments, selected, focusToken, display, status])
 
+  useEffect(() => {
+    const map = mapRef.current
+    const sdk = sdkRef.current
+    const stops: RouteStop[] = JSON.parse(routeKey)
+    if (!map || !sdk || status !== 'ready' || selected === null || stops.length < 2) return
+    const coordinates: [number, number][] = stops.map((stop) => [stop.lat, stop.lon])
+    const outline = new sdk.Polyline(coordinates, {}, { strokeColor: '#ffffff', strokeWidth: 10, strokeOpacity: .95, zIndex: 700, interactivityModel: 'default#transparent' })
+    const line = new sdk.Polyline(coordinates, { hintContent: 'Маршрут выбранного транспорта' }, { strokeColor: '#159447', strokeWidth: 5, strokeOpacity: 1, zIndex: 710 })
+    map.geoObjects.add(outline)
+    map.geoObjects.add(line)
+    const layout = sdk.templateLayoutFactory.createClass('<div class="$[properties.className]"><span class="route-stop-dot">$[properties.number]</span><span class="route-stop-name">$[properties.name]</span></div>')
+    const pins = stops.map((stop, i) => {
+      const pin = new sdk.Placemark([stop.lat, stop.lon], { name: escapeMapText(stop.name), number: i + 1, hintContent: escapeMapText(`${i + 1}. ${stop.name}`) }, {
+        iconLayout: layout, iconShape: { type: 'Circle', coordinates: [0, 0], radius: 11 }, zIndex: 800,
+        openBalloonOnClick: false, cursor: 'help',
+      })
+      map.geoObjects.add(pin)
+      return pin
+    })
+    const updateLabels = () => {
+      routeLabels(stops, map.getZoom()).forEach(({ side, visible }, i) => {
+        pins[i].properties.set({ className: `route-stop label-${side}${visible ? '' : ' label-hidden'}${i === 0 || i === stops.length - 1 ? ' is-terminus' : ''}` })
+      })
+    }
+    const fit = () => {
+      const lat = stops.map((stop) => stop.lat)
+      const lon = stops.map((stop) => stop.lon)
+      const width = host.current?.clientWidth ?? 1000
+      const height = host.current?.clientHeight ?? 650
+      // Leave the route in the usable map area beside the floating detail panel.
+      const sidebar = width > 720 ? (width > 1180 ? 460 : 418) : 28
+      map.setBounds([[Math.min(...lat) - .001, Math.min(...lon) - .001], [Math.max(...lat) + .001, Math.max(...lon) + .001]], {
+        zoomMargin: [Math.min(150, height * .2), sidebar, Math.min(190, height * .25), 100], preciseZoom: true,
+      })
+    }
+    fitRoute.current = fit
+    map.events.add('boundschange', updateLabels)
+    fit()
+    updateLabels()
+    return () => {
+      fitRoute.current = null
+      if (mapRef.current !== map) return
+      map.events.remove('boundschange', updateLabels)
+      for (const object of [outline, line, ...pins]) map.geoObjects.remove(object)
+    }
+  }, [routeKey, selected, focusToken, status])
+
   const zoom = (delta: number) => { const map = mapRef.current; if (map) map.setZoom(Math.max(9, Math.min(19, map.getZoom() + delta)), { duration: 150 }) }
   return <div className="transport-map">
     <div ref={host} className="yandex-host" aria-label="Yandex Map Москвы" onClickCapture={(event) => {
@@ -123,5 +178,6 @@ export function TransportMap({ day, vehicles, slowSegments, selected, focusToken
     {status !== 'ready' && <div className="map-notice" role="status"><span className="notice-icon">⌖</span><div><strong>{status === 'missing' ? 'Для отображения карты добавьте VITE_YANDEX_MAPS_API_KEY в web/.env' : status === 'error' ? 'Не удалось загрузить карту' : 'Подключаем Yandex Maps…'}</strong><span>{status === 'missing' ? 'После добавления ключа перезапустите dev-сервер.' : 'Географическая подложка будет доступна после загрузки.'}</span></div>{status === 'error' && <button onClick={() => setAttempt((value) => value + 1)}>Повторить</button>}</div>}
     {status === 'ready' && <div className="map-zoom"><button aria-label="Приблизить" onClick={() => zoom(1)}>+</button><button aria-label="Отдалить" onClick={() => zoom(-1)}>−</button><button aria-label="Показать Москву" onClick={() => mapRef.current?.setCenter(MOSCOW, 11, { duration: 250 })}>⌖</button></div>}
     {status === 'ready' && <span className="map-caption">МОСКВА · YANDEX MAPS</span>}
+    {status === 'ready' && selected !== null && routeStops && routeStops.length > 0 && <RouteStopsPanel key={selected} stops={routeStops} currentStopIndex={currentStopIndex} onFit={() => fitRoute.current?.()} />}
   </div>
 }

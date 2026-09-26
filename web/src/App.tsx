@@ -118,7 +118,7 @@ export default function App() {
       subtitle={replay ? 'Записанный сценарий движения' : 'Положение транспорта появится после подключения live-потока'} />
     <main className="stage" aria-label="Карта и обстановка">
       <div className="map-body">
-        <TransportMap day={mapDay} vehicles={mapVehicles} slowSegments={uiPreview ? UI_PREVIEW_SLOW_SEGMENTS : replaySlowSegments(mapFrame)} selected={mapSelected} focusToken={focusToken} display={settings} onSelect={selectVehicle} />
+        <TransportMap day={mapDay} vehicles={mapVehicles} slowSegments={uiPreview ? UI_PREVIEW_SLOW_SEGMENTS : replaySlowSegments(mapFrame)} selected={mapSelected} routeStops={currentTrip?.found ? currentTrip.routeStops : undefined} currentStopIndex={currentTrip?.currentStopIndex} focusToken={focusToken} display={settings} onSelect={selectVehicle} />
         <div className="workspace-toolbar">
           <div className="toolbar-title"><Icon name="pin" size={14} /><strong>Москва</strong></div>
           <div className="toolbar-filters">

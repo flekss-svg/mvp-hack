@@ -10,7 +10,9 @@ export interface YMaps21 {
 }
 
 export interface YMap21 {
+  events: { add: (event: string, callback: () => void) => void; remove: (event: string, callback: () => void) => void }
   geoObjects: { add: (object: YGeoObject21) => void; remove: (object: YGeoObject21) => void }
+  setBounds: (bounds: [[number, number], [number, number]], options?: { zoomMargin?: number[]; duration?: number; preciseZoom?: boolean }) => unknown
   setCenter: (center: [number, number], zoom?: number, options?: { duration?: number }) => void
   getZoom: () => number
   setZoom: (zoom: number, options?: { duration?: number }) => void

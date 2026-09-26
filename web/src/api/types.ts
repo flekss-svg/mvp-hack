@@ -41,7 +41,20 @@ export interface Alert extends ForecastContext {
   forecastDelay?: number
 }
 
+export interface RouteStop {
+  name: string
+  lat: number
+  lon: number
+  scheduledTime?: string
+  /** Only populated after the stop has been reached at the selected replay time. */
+  actualTime?: string | null
+}
+
 export interface TripCard extends ForecastContext {
+  /** Ordered stops of this trip's direction; not a road-snapped route. */
+  routeStops?: RouteStop[]
+  /** Last reached stop; -1 before departure, routeStops.length after completion. */
+  currentStopIndex?: number | null
   found: boolean
   onLine: boolean
   route: string
