@@ -1,0 +1,439 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Предиктор задержек наземного транспорта",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/model": {
+      "get": {
+        "summary": "Model Quality",
+        "description": "Панель «Качество модели» — из reports/metrics.json, чтобы после переобучения дашборд\nобновлялся сам. Подписи признаков тоже приходят с сервера: у фронтенда своей копии нет.",
+        "operationId": "model_quality_api_model_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/replay/day": {
+      "get": {
+        "summary": "Replay Day",
+        "operationId": "replay_day_api_replay_day_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/replay/frame": {
+      "get": {
+        "summary": "Replay Frame",
+        "description": "Все, что дашборд показывает на момент t. Если передан trip — вместе с его карточкой.",
+        "operationId": "replay_frame_api_replay_frame_get",
+        "parameters": [
+          {
+            "name": "t",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "title": "T"
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          },
+          {
+            "name": "min_level",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Min Level"
+            }
+          },
+          {
+            "name": "trip",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Trip"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/replay/timeline": {
+      "get": {
+        "summary": "Replay Timeline",
+        "operationId": "replay_timeline_api_replay_timeline_get",
+        "parameters": [
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mode"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/live/snapshot": {
+      "get": {
+        "summary": "Live Snapshot",
+        "operationId": "live_snapshot_api_live_snapshot_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events": {
+      "post": {
+        "summary": "Events",
+        "operationId": "events_api_events_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "items": {
+                  "$ref": "#/components/schemas/Event"
+                },
+                "type": "array",
+                "title": "Batch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/context": {
+      "post": {
+        "summary": "Set Context",
+        "operationId": "set_context_api_context_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Context"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/risk": {
+      "get": {
+        "summary": "Risk",
+        "description": "Сырой срез прогнозов — для интеграций; дашборд берет готовый /api/live/snapshot.",
+        "operationId": "risk_api_risk_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "min_risk",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 0.0,
+              "title": "Min Risk"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Context": {
+        "properties": {
+          "rain": {
+            "type": "number",
+            "title": "Rain",
+            "default": 0.0
+          },
+          "holiday": {
+            "type": "integer",
+            "title": "Holiday",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "Context"
+      },
+      "Event": {
+        "properties": {
+          "trip_id": {
+            "type": "string",
+            "title": "Trip Id"
+          },
+          "route_id": {
+            "type": "string",
+            "title": "Route Id"
+          },
+          "direction_id": {
+            "type": "string",
+            "title": "Direction Id"
+          },
+          "k": {
+            "type": "integer",
+            "title": "K"
+          },
+          "stop_id": {
+            "type": "string",
+            "title": "Stop Id"
+          },
+          "plan": {
+            "type": "number",
+            "title": "Plan"
+          },
+          "fact": {
+            "type": "number",
+            "title": "Fact"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trip_id",
+          "route_id",
+          "direction_id",
+          "k",
+          "stop_id",
+          "plan",
+          "fact"
+        ],
+        "title": "Event"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

@@ -1,0 +1,395 @@
+{
+  "revision": "66535bcbcf06c203aff221f795a3f423bfe587d0",
+  "date": "2026-09-26",
+  "python": "3.13.8",
+  "tables": {
+    "calendar.parquet": {
+      "rows": 1867,
+      "bytes": 22464,
+      "fields": "service_id: string\nMonday: int64\nTuesday: int64\nWednesday: int64\nThursday: int64\nFriday: int64\nSaturday: int64\nSunday: int64\nstart_date: string\nend_date: string\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1228"
+    },
+    "features_test_M.parquet": {
+      "rows": 687662,
+      "bytes": 15442022,
+      "fields": "trip_id: string\nk: int64\nh: int64\nt: double\nstop_id: string\nroute_id: string\ndelay_future: double\ny: int64\ndate: string\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1070"
+    },
+    "features_test_X.parquet": {
+      "rows": 687662,
+      "bytes": 30722436,
+      "fields": "delay_now: float\nd_delay_3: float\nrun_ratio_3: float\nlead_delay: float\nlead_headway_dev: float\nroute_recent_delay: float\nahead_recent_sum: float\nahead_recent_max: float\nahead_recent_n: float\nahead_hist_sum: float\nahead_plan_min: float\nahead_n_segs: float\nstops_left: float\nprogress: float\nhour: float\ndow: float\nweekend: float\nholiday: float\nrain: float\nis_tram: float\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 2531"
+    },
+    "features_train_M.parquet": {
+      "rows": 825528,
+      "bytes": 18564220,
+      "fields": "trip_id: string\nk: int64\nh: int64\nt: double\nstop_id: string\nroute_id: string\ndelay_future: double\ny: int64\ndate: string\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 1070"
+    },
+    "features_train_X.parquet": {
+      "rows": 825528,
+      "bytes": 35900080,
+      "fields": "delay_now: float\nd_delay_3: float\nrun_ratio_3: float\nlead_delay: float\nlead_headway_dev: float\nroute_recent_delay: float\nahead_recent_sum: float\nahead_recent_max: float\nahead_recent_n: float\nahead_hist_sum: float\nahead_plan_min: float\nahead_n_segs: float\nstops_left: float\nprogress: float\nhour: float\ndow: float\nweekend: float\nholiday: float\nrain: float\nis_tram: float\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 2531"
+    },
+    "routes.parquet": {
+      "rows": 49,
+      "bytes": 6522,
+      "fields": "route_id: string\nagency_id: string\nroute_short_name: string\nroute_long_name: string\nroute_type: string\nmode: string\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 817"
+    },
+    "sim_meta.parquet": {
+      "rows": 28,
+      "bytes": 3798,
+      "fields": "date: string\nrain: double\nrain_from: double\nrain_to: double\nn_incidents: int64\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 663"
+    },
+    "stop_times.parquet": {
+      "rows": 627164,
+      "bytes": 1239710,
+      "fields": "trip_id: string\nstop_id: string\nstop_sequence: int64\narr_min: double\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 559"
+    },
+    "stops.parquet": {
+      "rows": 1636,
+      "bytes": 61390,
+      "fields": "stop_id: string\nstop_name: string\nstop_lon: double\nstop_lat: double\nmodes: string\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 669"
+    },
+    "trips.parquet": {
+      "rows": 28537,
+      "bytes": 241299,
+      "fields": "route_id: string\nservice_id: string\ntrip_id: string\ndirection_id: string\n-- schema metadata --\npandas: '{\"index_columns\": [], \"column_indexes\": [], \"columns\": [{\"name\":' + 567"
+    }
+  },
+  "http": {
+    "/api/health": {
+      "status": 200,
+      "elapsed_ms": 4138.94,
+      "bytes": 119,
+      "body": {
+        "ok": true,
+        "sources": {
+          "replay": {
+            "ready": true,
+            "error": null
+          },
+          "live": {
+            "ready": true,
+            "error": null
+          }
+        },
+        "tripsInSchedule": 28537
+      }
+    },
+    "/api/model": {
+      "status": 200,
+      "elapsed_ms": 2.01,
+      "bytes": 979,
+      "body": {
+        "horizon": "10–15 мин",
+        "threshold": 3.0,
+        "recall": 70,
+        "precision": 83,
+        "baselinePrecision": 56,
+        "prAuc": 0.8666,
+        "baselinePrAuc": 0.658,
+        "testSize": 566680,
+        "features": [
+          {
+            "key": "delay_now",
+            "label": "Текущее опоздание относительно плана, мин",
+            "importance": 33.7,
+            "share": 1.0
+          },
+          {
+            "key": "ahead_hist_sum",
+            "label": "Сумма типичных (исторических) избытков времени хода на перегонах впереди, мин",
+            "importance": 15.21,
+            "share": 0.451
+          },
+          {
+            "key": "lead_headway_dev",
+            "label": "Отклонение интервала от впереди идущей машины от планового, мин",
+            "importance": 9.78,
+            "share": 0.29
+          },
+          {
+            "key": "ahead_recent_sum",
+            "label": "Сумма недавних отклонений хода на перегонах впереди (по другим машинам), мин",
+            "importance": 5.1,
+            "share": 0.151
+          },
+          {
+            "key": "hour",
+            "label": "Час суток",
+            "importance": 5.05,
+            "share": 0.15
+          }
+        ]
+      }
+    },
+    "/api/replay/day": {
+      "status": 200,
+      "elapsed_ms": 23.21,
+      "bytes": 81071,
+      "body": {
+        "date": "2026-09-03",
+        "dow": 3,
+        "rain": {
+          "level": 0.0,
+          "start": 0.0,
+          "end": 0.0
+        },
+        "threshold": 3.0,
+        "tMin": 250.72893166243813,
+        "tMax": 1622.9353420164266,
+        "horizonLabel": "10–15 мин",
+        "riskLevels": {
+          "mid": 0.3,
+          "high": 0.6
+        },
+        "modes": [
+          {
+            "id": 0,
+            "key": "bus"
+          },
+          {
+            "id": 1,
+            "key": "tram"
+          },
+          {
+            "id": 2,
+            "key": "trolley"
+          },
+          {
+            "id": 3,
+            "key": "other"
+          }
+        ],
+        "trips": 15443
+      },
+      "network": {
+        "stops": 1636,
+        "segments": 1691
+      }
+    },
+    "/api/replay/frame?t=450&trip=0": {
+      "status": 200,
+      "elapsed_ms": 29.97,
+      "bytes": 24335,
+      "sample": {
+        "t": 450.0,
+        "clock": "07:30",
+        "raining": false,
+        "kpi": [
+          {
+            "key": "onLine",
+            "label": "на линии",
+            "value": "579"
+          },
+          {
+            "key": "high",
+            "label": "высокий риск через 10–15 мин",
+            "tone": "high",
+            "value": "246"
+          },
+          {
+            "key": "late",
+            "label": "уже опаздывают",
+            "value": "147"
+          },
+          {
+            "key": "hit",
+            "label": "ранних тревог сбылось",
+            "value": "73%",
+            "hint": "Из 312 тревог, выданных 20–30 минут назад машинам без опоздания, сбылось 228"
+          }
+        ],
+        "vehicles": {
+          "id": [
+            121,
+            122
+          ],
+          "lon": [
+            37.81669,
+            37.82264
+          ],
+          "lat": [
+            55.75121,
+            55.76727
+          ],
+          "level": [
+            2,
+            2
+          ],
+          "risk": [
+            100,
+            85
+          ],
+          "late": [
+            1,
+            0
+          ]
+        },
+        "slowSegments": [
+          [
+            109,
+            0,
+            1.2
+          ]
+        ],
+        "alerts": [
+          {
+            "tripId": 9393,
+            "route": "653",
+            "mode": "bus",
+            "dest": "Филёвская пойма",
+            "stop": "Метро «Фили»",
+            "delay": 0.1,
+            "risk": 64
+          }
+        ],
+        "trip": {
+          "found": true,
+          "onLine": false,
+          "route": "м64",
+          "routeName": "Ивановское - Метро «Выхино»",
+          "mode": "bus"
+        }
+      },
+      "vehicle_count": 579
+    },
+    "/api/replay/timeline": {
+      "status": 200,
+      "elapsed_ms": 218.7,
+      "bytes": 6945
+    },
+    "/api/live/snapshot": {
+      "status": 200,
+      "elapsed_ms": 1.17,
+      "bytes": 499,
+      "body": {
+        "clock": "20:27",
+        "tracked": 0,
+        "kpi": [
+          {
+            "key": "onLine",
+            "label": "рейсов под наблюдением",
+            "value": "0"
+          },
+          {
+            "key": "high",
+            "label": "высокий риск через 10–15 мин",
+            "tone": "high",
+            "value": "0"
+          },
+          {
+            "key": "late",
+            "label": "уже опаздывают",
+            "value": "0"
+          },
+          {
+            "key": "hit",
+            "label": "ранних тревог сбылось",
+            "value": "—",
+            "hint": "В live-режиме проверка тревог появится, когда накопится история"
+          }
+        ],
+        "alerts": []
+      }
+    },
+    "/api/risk": {
+      "status": 200,
+      "elapsed_ms": 0.96,
+      "bytes": 2,
+      "body": []
+    },
+    "/": {
+      "status": 200,
+      "elapsed_ms": 40.4,
+      "bytes": 754
+    },
+    "/docs": {
+      "status": 200,
+      "elapsed_ms": 0.87,
+      "bytes": 1074
+    },
+    "/openapi.json": {
+      "status": 200,
+      "elapsed_ms": 68.26,
+      "bytes": 5488
+    }
+  },
+  "packages": {
+    "pandas": "3.0.6",
+    "numpy": "2.5.3",
+    "pyarrow": "25.0.1",
+    "scikit-learn": "1.9.1",
+    "catboost": "1.2.10",
+    "fastapi": "0.141.1",
+    "starlette": "1.7.0",
+    "uvicorn": "0.54.0",
+    "pydantic": "2.13.5",
+    "pytest": "9.1.1",
+    "httpx2": "2.13.1"
+  },
+  "fact_days": {
+    "count": 28,
+    "first": "day=2026-08-10.parquet",
+    "last": "day=2026-09-06.parquet",
+    "rows": 8944236
+  },
+  "artifacts": {
+    "models/delay_catboost.cbm": {
+      "bytes": 1665800,
+      "sha256": "beeaf17d905c80f55d272405a526540cf16716e78ac624e563bd92fecb206fec"
+    },
+    "models/delay_regressor.cbm": {
+      "bytes": 803880,
+      "sha256": "778bb0ac12fd904b5636c49462ab53dc7bdade5f958bc1c04f268fa9399065a4"
+    },
+    "models/hackathon_v2_catboost.cbm": {
+      "bytes": 982936,
+      "sha256": "0e486be20a8dbfa78021b01917cc86df3d748e4293f61f2ec88f850132f5f5ab"
+    },
+    "models/hackathon_v2_features.csv": {
+      "bytes": 356,
+      "sha256": "8f9962544d6fe95187004bfa96ca9cd2dd34d46367df35aef401e3680fe06640"
+    },
+    "models/hist_profile.pkl": {
+      "bytes": 877944,
+      "sha256": "14a0ec5ad58f4abd0a92cd8d846915e62841a9ca37bd82cea5708747190bef40"
+    },
+    "reports/metrics.json": {
+      "bytes": 6392,
+      "sha256": "12f6d212f5db7d78a88c7d6aa14b86149b14a74e58ef18aa6a431c4297f0e62e"
+    },
+    "data/processed/replay.pkl": {
+      "bytes": 20120399,
+      "sha256": "3f3dd904de5eb356f299131ae5dd22203eb10bce5e567fbf62257e78a4946356"
+    }
+  },
+  "frame_check": {
+    "n": 50,
+    "p50_ms": 8.89,
+    "p95_ms": 10.13,
+    "scope": "Sequential TestClient requests in one local process, warm cache, no browser/network/load"
+  },
+  "horizon_check": {
+    "min_plan_minutes": 13.0,
+    "max_plan_minutes": 20.0,
+    "within_10_15": 672873,
+    "total": 687662,
+    "above_15": 14789,
+    "share_above_15": 0.02150620508331128,
+    "scope": "Cached test features, plan-to-plan horizon; not observed lead time"
+  },
+  "test_run": {
+    "date": "2026-09-26",
+    "unit_passed": 15,
+    "integration_passed": 3,
+    "backend_coverage": 83.19,
+    "frontend_passed": 14,
+    "frontend_files": 10,
+    "statements": 93.27,
+    "branches": 78.2,
+    "functions": 94.93,
+    "lines": 96.47,
+    "production_build": "passed",
+    "e2e_passed": 1,
+    "warnings_in_output": 0
+  }
+}
