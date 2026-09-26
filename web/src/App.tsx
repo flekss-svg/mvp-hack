@@ -57,7 +57,8 @@ export default function App() {
     enabled: replay && !uiPreview && playback.t !== null && !!day.data, pollMs: playback.playing ? 120 : undefined,
   })
   const timeline = useResource((signal) => api.timeline(mode, signal), [mode], { enabled: replay && !uiPreview })
-  const live = useResource((signal) => api.live(signal), [], { pollMs: 4000, enabled: !replay && LIVE_TELEMETRY_ENABLED })
+  const live = useResource((signal) => api.live(signal), [], { pollMs: 2000, enabled: !replay && LIVE_TELEMETRY_ENABLED })
+  const liveCount = replay ? 0 : live.data?.vehicles?.length ?? 0
   const offline = !uiPreview && (replay ? !!(day.error || frame.error) : !!live.error)
   // Every layout component receives this single view model; preview only swaps its source in development.
   const realData = replay ? frame.data : live.data
@@ -107,15 +108,18 @@ export default function App() {
   const searchVehicles = useMemo(() => {
     const known = new Map((dashboardData?.alerts ?? []).map((a) => [a.tripId, { tripId: a.tripId, route: a.route, mode: a.mode }]))
     rawFrame?.vehicles.id.forEach((id, i) => { if (!known.has(id)) known.set(id, { tripId: id, route: rawFrame.vehicles.route?.[i] ?? '', mode: rawFrame.vehicles.mode?.[i] ?? '' }) })
+    if (!replay) live.data?.vehicles?.forEach((v) => { if (typeof v.vehicleId === 'number' && !known.has(v.vehicleId)) known.set(v.vehicleId, { tripId: v.vehicleId, route: v.route ?? '', mode: v.mode ?? '' }) })
     return [...known.values()]
-  }, [dashboardData, rawFrame])
-  const mapVehicles = useMemo(() => uiPreview ? UI_PREVIEW_VEHICLES : replay ? replayVehicles(mapFrame) : liveVehicles(live.data?.vehicles), [uiPreview, replay, mapFrame, live.data?.vehicles])
+  }, [dashboardData, rawFrame, replay, live.data])
+  const mapVehicles = useMemo(() => uiPreview ? UI_PREVIEW_VEHICLES : replay ? replayVehicles(mapFrame) : liveVehicles(live.data?.vehicles).filter((v) => v.vehicleId === selected ||
+    ((mode === 'all' || !v.mode || v.mode === mode) && (settings.lowRisk || v.level !== 0) && (!minLevel || (v.level != null && v.level !== 3 && v.level >= minLevel)))),
+  [uiPreview, replay, mapFrame, live.data?.vehicles, selected, mode, minLevel, settings.lowRisk])
   const mapSelected = uiPreview && selected === null ? 1011 : selected
   const retry = () => { day.refresh(); frame.refresh(); timeline.refresh(); live.refresh() }
   return <div className={`app density-${settings.density}`}>
     <Header clock={dashboardData?.clock ?? '--:--'} kpi={buffered.value?.kpi ?? EMPTY_KPI}
-      status={offline ? 'OFFLINE' : !dashboardData && replay && !uiPreview ? 'CONNECTING' : replay ? 'SIMULATION' : 'WAITING'}
-      subtitle={replay ? 'Записанный сценарий движения' : 'Положение транспорта появится после подключения live-потока'} />
+      status={offline ? 'OFFLINE' : !dashboardData && replay && !uiPreview ? 'CONNECTING' : replay ? 'SIMULATION' : liveCount ? 'LIVE' : 'WAITING'}
+      subtitle={replay ? 'Записанный сценарий движения' : liveCount ? `Поток NDTP · ТС на связи: ${liveCount}` : 'Положение транспорта появится после подключения live-потока'} />
     <main className="stage" aria-label="Карта и обстановка">
       <div className="map-body">
         <TransportMap day={mapDay} vehicles={mapVehicles} slowSegments={uiPreview ? UI_PREVIEW_SLOW_SEGMENTS : replaySlowSegments(mapFrame)} selected={mapSelected} routeStops={currentTrip?.found ? currentTrip.routeStops : undefined} currentStopIndex={currentTrip?.currentStopIndex} focusToken={focusToken} display={settings} onSelect={selectVehicle} />
@@ -132,7 +136,7 @@ export default function App() {
         {!offline && <div className="connection-overlay"><ConnectionStatus updatedAt={uiPreview ? previewMapUpdatedAt : updatedAt} now={now} offline={offline} paused={replay && !playing && !uiPreview} /></div>}
         {!uiPreview && offline && !dashboardData && <div className="offline-floating" role="alert"><span className="status-dot" /><div><strong>Нет соединения</strong><span>Данные временно недоступны</span></div><button onClick={retry}>Повторить</button></div>}
         {!uiPreview && !offline && !dashboardData && replay && <div className="service-state loading-state" role="status"><span className="loader" /><h2>Загружаем записанный сценарий</h2><p>Подключение к Replay-сервису…</p></div>}
-        {!replay && <div className="telemetry-wait" role="status"><span className="status-dot" /><div><strong>ОЖИДАНИЕ ТЕЛЕМЕТРИИ</strong><span>Положение транспорта появится после подключения live-потока</span></div></div>}
+        {!replay && !liveCount && <div className="telemetry-wait" role="status"><span className="status-dot" /><div><strong>ОЖИДАНИЕ ТЕЛЕМЕТРИИ</strong><span>Положение транспорта появится после подключения live-потока</span></div></div>}
         {mapDay && <Legend threshold={mapDay.threshold} />}
         {selected !== null && <div className="selection-chip"><span className="selection-dot" />Выбрано ТС <b>{selected}</b><button aria-label="Снять выбор ТС" onClick={() => setSelected(null)}>×</button></div>}
         <aside ref={asideRef} className="aside" aria-label="Диспетчерская панель">
@@ -142,7 +146,7 @@ export default function App() {
           <div className="incident-scroll">{selected !== null ? trip?.found && typeof selected === 'number' ? <TripPanel trip={trip} tripId={selected} updatedAt={detail.updatedAt} now={now} onClose={() => setSelected(null)} /> : <div className="selection-loading" role="status"><button className="back-button" onClick={() => setSelected(null)}>← Все инциденты</button><span>ТС {selected} · {frame.loading && replay ? 'получаем сведения…' : 'сведения недоступны'}</span></div> : <AlertList alerts={filteredAlerts} onSelect={selectVehicle} updatedAt={updatedAt} now={now} empty={offline ? 'Ожидаем восстановление связи с сервисом.' : !replay ? 'Ожидание потока телеметрии. Проблемные ТС появятся здесь после подключения live-данных.' : !dashboardData ? 'Загружаем прогнозы…' : 'Сейчас нет прогнозируемых критических отклонений'} />}<div className="aside-bottom"><span className="info-icon">i</span><p>Риск — вероятность будущего опоздания. Панель обновляется раз в 4 секунды, чтобы прогноз было удобно читать.</p></div><ModelPanel demo={false} /></div>
         </aside>
         {fleetOpen && <FleetDrawer vehicles={mapVehicles} onSelect={selectVehicle} onClose={() => setFleetOpen(false)} />}
-        <footer className={`footer${replay ? '' : ' footer-live'}`}>{replay ? <><div className="playback-controls"><button disabled={(!day.data && !uiPreview) || offline} onClick={uiPreview ? undefined : toggle} className="play-button" aria-label={uiPreview || playing ? 'Пауза' : 'Воспроизвести'}>{uiPreview || playing ? 'Ⅱ' : '▶'}</button><div><strong>{dashboardData?.clock ?? '--:--'}</strong><span>{uiPreview || playing ? 'Воспроизведение' : 'На паузе'}</span></div><button className="speed-button" onClick={uiPreview ? undefined : playback.cycleSpeed} aria-label="Изменить скорость">×{uiPreview ? 10 : playback.speed}</button></div><div className="timeline-wrap"><div className="timeline-heading"><span>РИСК В ТЕЧЕНИЕ ДНЯ</span><span><i className="tiny-dot" />ТС с высоким риском</span></div>{!uiPreview && timeline.error ? <div className="timeline-error">Шкала времени недоступна <button onClick={timeline.refresh}>Повторить</button></div> : <Timeline data={uiPreview ? UI_PREVIEW_TIMELINE : timeline.data} t={uiPreview ? 492 : playback.t} onSeek={uiPreview ? () => {} : playback.seek} highColor={settings.colors.high} />}</div><div className="timeline-hint">Выберите время<br />на шкале</div></> : <><Icon name="signal" /><strong>Ожидание телеметрии</strong><span className="muted">Live-поток ещё не подключён</span>{LIVE_TELEMETRY_ENABLED && <button onClick={live.refresh}>Обновить</button>}</>}</footer>
+        <footer className={`footer${replay ? '' : ' footer-live'}`}>{replay ? <><div className="playback-controls"><button disabled={(!day.data && !uiPreview) || offline} onClick={uiPreview ? undefined : toggle} className="play-button" aria-label={uiPreview || playing ? 'Пауза' : 'Воспроизвести'}>{uiPreview || playing ? 'Ⅱ' : '▶'}</button><div><strong>{dashboardData?.clock ?? '--:--'}</strong><span>{uiPreview || playing ? 'Воспроизведение' : 'На паузе'}</span></div><button className="speed-button" onClick={uiPreview ? undefined : playback.cycleSpeed} aria-label="Изменить скорость">×{uiPreview ? 10 : playback.speed}</button></div><div className="timeline-wrap"><div className="timeline-heading"><span>РИСК В ТЕЧЕНИЕ ДНЯ</span><span><i className="tiny-dot" />ТС с высоким риском</span></div>{!uiPreview && timeline.error ? <div className="timeline-error">Шкала времени недоступна <button onClick={timeline.refresh}>Повторить</button></div> : <Timeline data={uiPreview ? UI_PREVIEW_TIMELINE : timeline.data} t={uiPreview ? 492 : playback.t} onSeek={uiPreview ? () => {} : playback.seek} highColor={settings.colors.high} />}</div><div className="timeline-hint">Выберите время<br />на шкале</div></> : liveCount ? <><span className="status-dot" /><strong>Live · NDTP</strong><span className="muted">ТС на связи: {liveCount} · положение обновляется каждые 2 с</span></> : <><Icon name="signal" /><strong>Ожидание телеметрии</strong><span className="muted">Live-поток ещё не подключён</span>{LIVE_TELEMETRY_ENABLED && <button onClick={live.refresh}>Обновить</button>}</>}</footer>
       </div>
     </main>
   </div>

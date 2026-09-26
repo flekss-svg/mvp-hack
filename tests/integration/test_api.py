@@ -61,7 +61,9 @@ def test_live_write_and_read_endpoints(client: TestClient, live_service) -> None
     assert client.post("/api/events", json=[{"trip_id": "broken"}]).status_code == 422
     assert client.post("/api/context", json={"rain": 0.7, "holiday": 1}).json() == {"ok": True}
     assert live_service.context == {"rain": 0.7, "holiday": 1}
-    assert client.get("/api/live/snapshot").status_code == 200
+    live = client.get("/api/live/snapshot")
+    assert live.status_code == 200
+    assert {"vehicles", "trips", "alerts", "kpi"} <= live.json().keys()
     assert client.get("/api/risk", params={"limit": 5, "min_risk": 0.5}).json()[0]["risk"] == 0.8
 
 

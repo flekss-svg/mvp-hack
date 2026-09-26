@@ -12,7 +12,7 @@
     GET  /api/replay/day          — метаданные записанного дня + геометрия сети
     GET  /api/replay/frame        — кадр на момент t: машины, KPI, тревоги, медленные перегоны
     GET  /api/replay/timeline     — шкала времени: сколько машин с высоким риском по часам
-    GET  /api/live/snapshot       — то же по форме, но из живого потока событий
+    GET  /api/live/snapshot       — live: машины из NDTP на карте + прогнозы по событиям
     GET  /api/live/units          — машины, подключенные по NDTP: последнее положение
     POST /api/events              — пачка событий «машина прошла остановку»
     POST /api/context             — погода/праздник на сегодня
@@ -33,7 +33,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.config import HORIZON_MIN, LATE_THRESHOLD_MIN, REPORTS, WEB_DIST
+from app.config import HORIZON_MIN, LATE_THRESHOLD_MIN, LIVE_MAX_AGE_S, REPORTS, WEB_DIST
+from app.service.live_view import live_snapshot as build_live_snapshot
 from app.service.ndtp_server import NdtpServer
 from app.engine.feature_definitions import FEATURE_DESCRIPTIONS
 from app.model.artifacts import ModelArtifacts
@@ -188,7 +189,10 @@ def replay_timeline(mode: str | None = None):
 
 @app.get("/api/live/snapshot")
 def live_snapshot():
-    return _live.get().snapshot()
+    """Позиции машин из NDTP + прогнозы. Позиции от модели не зависят: если артефакты не
+    загрузились, машины все равно видны на карте, просто без риска."""
+    risk = _live.get().snapshot() if _live.ready else None
+    return build_live_snapshot(_ndtp.positions(LIVE_MAX_AGE_S), risk)
 
 
 @app.get("/api/live/units")

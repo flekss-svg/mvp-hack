@@ -115,6 +115,14 @@ class NdtpServer:
                 "error": self.error, "stats": asdict(self.stats),
                 "units": [u.to_json(now) for u in units]}
 
+    def positions(self, max_age_s: float) -> list[Fix]:
+        """Последние достоверные отметки машин, от которых были пакеты не позже max_age_s назад.
+        Машина, пропавшая со связи, исчезает с карты, а не висит на последней точке вечно."""
+        now = time.time()
+        return [u.fix for u in sorted(self._units.values(), key=lambda u: u.unit_id)
+                if u.fix is not None and u.fix.location_valid
+                and u.last_seen is not None and now - u.last_seen <= max_age_s]
+
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
         conn = _Conn(writer, f"{peer[0]}:{peer[1]}" if peer else "?", FrameParser(self._verify_crc))

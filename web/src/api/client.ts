@@ -1,7 +1,7 @@
 /** Единственное место во фронтенде, которое знает про HTTP и адреса эндпоинтов. */
 import type { ApiProblem, DayInfo, Frame, LiveSnapshot, ModelQuality, Timeline } from './types'
-/** Enable only after the backend serves independent live telemetry. */
-export const LIVE_TELEMETRY_ENABLED = import.meta.env.VITE_LIVE_TELEMETRY === 'true'
+/** Бэкенд отдает live-телеметрию из NDTP (/api/live/snapshot). Выключить: VITE_LIVE_TELEMETRY=false. */
+export const LIVE_TELEMETRY_ENABLED = import.meta.env.VITE_LIVE_TELEMETRY !== 'false'
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
 

@@ -3,8 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_DISPLAY } from '../ui/display'
 import { TransportMap } from './TransportMap'
 
-// В тестовом окружении VITE_YANDEX_MAPS_API_KEY не задан — TransportMap должен явно
-// сообщить об этом, а не пытаться грузить внешний SDK Яндекса.
+// Ключ из локального web/.env не должен влиять на тест: подменяем его пустым.
+vi.mock('../maps/yandex', async (original) => ({ ...(await original<typeof import('../maps/yandex')>()), MAP_KEY: '' }))
+
+// Без VITE_YANDEX_MAPS_API_KEY TransportMap должен явно сообщить об этом, а не грузить SDK.
 describe('TransportMap without an API key', () => {
   it('shows the missing-key notice instead of loading the SDK', () => {
     render(

@@ -22,7 +22,10 @@ describe('App', () => {
     vi.mocked(api.day).mockResolvedValue(day)
     vi.mocked(api.frame).mockResolvedValue(frame)
     vi.mocked(api.timeline).mockResolvedValue(timeline)
-    vi.mocked(api.live).mockResolvedValue({ clock: '12:00', tracked: 2, kpi: [], alerts: [] })
+    vi.mocked(api.live).mockResolvedValue({
+      clock: '12:00', tracked: 1, kpi: [], alerts: [],
+      vehicles: [{ vehicleId: 1166336, lat: 55.7, lon: 37.5, speed: 40, level: null, risk: null }],
+    })
   })
 
   it('loads the recorded scenario and switches to live mode', async () => {
@@ -36,6 +39,9 @@ describe('App', () => {
 
     await waitFor(() => expect(api.live).toHaveBeenCalled())
     expect(screen.getByRole('button', { name: 'Live' })).toHaveAttribute('aria-pressed', 'true')
+    // машина из потока NDTP включает статус LIVE и убирает плашку «ожидание телеметрии»
+    expect(await screen.findByText('LIVE · NDTP')).toBeVisible()
+    expect(screen.getByText(/ТС на связи: 1/, { selector: '.header-time p' })).toBeVisible()
   })
 
   it('opens the trip card from an alert and closes it', async () => {

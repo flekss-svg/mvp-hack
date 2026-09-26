@@ -109,3 +109,16 @@ def test_stop_does_not_hang_on_a_connected_terminal() -> None:
         assert not server.listening
         w.close()
     run(scenario)
+
+
+def test_positions_for_the_live_map_skip_invalid_and_stale_units() -> None:
+    async def scenario(server: NdtpServer) -> None:
+        w = await connect(server)
+        await send(w, ndtp_realtime(1, lat=55.70, lon=37.50))
+        await send(w, ndtp_realtime(2, valid=False))   # терминал без фиксации координат
+        await wait_for(lambda: server.stats.fixes == 2)
+
+        assert [f.unit_id for f in server.positions(max_age_s=60)] == [1]
+        assert server.positions(max_age_s=-1) == []    # все отметки «старше» порога
+        await close(w)
+    run(scenario)
