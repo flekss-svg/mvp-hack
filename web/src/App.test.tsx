@@ -88,6 +88,6 @@ describe('App', () => {
 
     await waitFor(() => expect(api.live).toHaveBeenCalled())
     expect(await screen.findByText(/Live · прогноз/)).toBeVisible()
-    expect(screen.queryByLabelText('Карта маршрутов')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Карта маршрутов')).toBeInTheDocument()
   })
 })

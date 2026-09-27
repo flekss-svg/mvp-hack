@@ -3,6 +3,7 @@
 Это единственное место, где зашиты "магические числа" вроде порога опоздания или горизонта
 прогноза — остальной код их только читает.
 """
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -38,6 +39,16 @@ RISK_LEVELS = (0.3, 0.6)
 SLOW_SEG_MIN = (1.0, 2.5)
 SLOW_SEG_WINDOW_MIN = 15.0   # за какое окно назад усредняем прохождения перегона
 ALERT_LIMIT = 40             # сколько рейсов показываем в списке тревог
+
+# Сетевые сервисы Docker. Пустой ML_URL оставляет локальный режим без внешнего ML-сервиса.
+ML_URL = os.environ.get("ML_URL", "").rstrip("/")
+ML_TIMEOUT_S = float(os.environ.get("ML_TIMEOUT_S", "5"))
+LIVE_UNIT_TTL_S = float(os.environ.get("LIVE_UNIT_TTL_S", "120"))
+
+# TCP-приёмник телематики NDTP. В Docker он слушает 0.0.0.0:9201.
+NDTP_HOST = os.environ.get("NDTP_HOST", "0.0.0.0")
+NDTP_PORT = int(os.environ.get("NDTP_PORT", "9201"))
+NDTP_VERIFY_CRC = os.environ.get("NDTP_VERIFY_CRC", "1") != "0"
 
 # Синтетический «факт» (заменяется реальной телематикой)
 SIM_START = "2026-08-10"     # понедельник

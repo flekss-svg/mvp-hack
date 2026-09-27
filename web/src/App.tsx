@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api } from './api/client'
-import type { Kpi } from './api/types'
+import type { Frame, Kpi } from './api/types'
 import { useResource } from './hooks/useResource'
 import { usePlayback } from './hooks/usePlayback'
 import { AlertList } from './components/AlertList'
@@ -47,6 +47,18 @@ export default function App() {
     pollMs: 4000,
     enabled: source === 'live',
   })
+  const liveFrame: Frame | null = live.data
+    ? {
+        t: 0,
+        clock: live.data.clock,
+        raining: false,
+        kpi: live.data.kpi,
+        vehicles: live.data.vehicles ?? { id: [], lon: [], lat: [], level: [], risk: [], late: [] },
+        slowSegments: [],
+        alerts: live.data.alerts,
+        trip: null,
+      }
+    : null
 
   const blocker = replayOn ? day.error : live.error
   const kpi = (replayOn ? frame.data?.kpi : live.data?.kpi) ?? EMPTY_KPI
@@ -61,29 +73,28 @@ export default function App() {
     <div className={`app${replayOn ? '' : ' app-live'}`}>
       <Header clock={clock} subtitle={subtitle} kpi={kpi} />
 
-      {replayOn && (
-        <div className="stage">
-          {day.data ? (
-            <MapCanvas
-              day={day.data}
-              frame={frame.data}
-              selected={selected}
-              onSelect={setSelected}
-            />
-          ) : (
-            <div className="stage-note">{blocker ? blocker.message : 'Загрузка карты…'}</div>
-          )}
-          {day.data && (
-            <>
-              <p className="banner">
-                Расписание и остановки — реальные (data.mos.ru). Движение в записанном дне
-                смоделировано; режим Live показывает то, что прислал сервис.
-              </p>
-              <Legend threshold={day.data.threshold} />
-            </>
-          )}
-        </div>
-      )}
+      <div className="stage">
+        {day.data ? (
+          <MapCanvas
+            day={day.data}
+            frame={replayOn ? frame.data : liveFrame}
+            selected={replayOn ? selected : null}
+            onSelect={replayOn ? setSelected : () => setSelected(null)}
+          />
+        ) : (
+          <div className="stage-note">{blocker ? blocker.message : 'Загрузка карты…'}</div>
+        )}
+        {day.data && (
+          <>
+            <p className="banner">
+              {replayOn
+                ? 'Расписание и остановки — реальные (data.mos.ru). Движение в записанном дне смоделировано.'
+                : 'Live: координаты приходят по NDTP, прогноз задержки — из выделенного ML-сервиса.'}
+            </p>
+            <Legend threshold={day.data.threshold} />
+          </>
+        )}
+      </div>
 
       <aside className="aside">
         <section className="panel">

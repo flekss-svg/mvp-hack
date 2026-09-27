@@ -1,5 +1,17 @@
 venv/
-data/
+
+# Данные организаторов и сырые выгрузки не коммитим. Для Docker храним только
+# готовый replay и компактные таблицы расписания режима «Симуляция».
+data/*
+!data/processed/
+data/processed/*
+!data/processed/replay.pkl
+!data/processed/calendar.parquet
+!data/processed/routes.parquet
+!data/processed/sim_meta.parquet
+!data/processed/stops.parquet
+!data/processed/stop_times.parquet
+!data/processed/trips.parquet
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -22,3 +34,6 @@ web/tsconfig.tsbuildinfo
 
 submissions/
 
+.env
+tmp/
+docker-health.json

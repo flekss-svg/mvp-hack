@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import struct
+
 import numpy as np
 
 from app.replay_build import KEY_SPAN, ReplayDay
@@ -59,3 +61,52 @@ class FakeLiveService:
         if not limit or min_risk > 0.8:
             return []
         return [{"trip_id": "trip-1", "risk": 0.8}]
+
+
+def crc16_reference(data: bytes) -> int:
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= byte
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0xA001 if crc & 1 else crc >> 1
+    return crc
+
+
+def ndtp_frame(unit_id: int, service_id: int, nph_type: int, body: bytes, crc_delta: int = 0) -> bytes:
+    payload = struct.pack("<HHHI", service_id, nph_type, 1, 1) + body
+    crc = (crc16_reference(payload) + crc_delta) & 0xFFFF
+    swapped = ((crc & 0xFF) << 8) | (crc >> 8)
+    return struct.pack("<HHHHBIH", 0x7E7E, len(payload), 0, swapped, 0x02, unit_id, 0) + payload
+
+
+def ndtp_handshake(unit_id: int) -> bytes:
+    return ndtp_frame(unit_id, 0, 100, struct.pack("<HHHIII", 6, 2, 0, unit_id, 65535, 0))
+
+
+def ndtp_realtime(
+    unit_id: int,
+    lat: float = 55.7551234,
+    lon: float = 37.617321,
+    *,
+    valid: bool = True,
+    speed: int = 40,
+    timestamp: int = 1_780_000_000,
+    crc_delta: int = 0,
+) -> bytes:
+    dop = (1 << 5) | (1 << 6) | (int(valid) << 7)
+    nav = struct.pack(
+        "<IIIBBHHHHHBB",
+        timestamp,
+        round(abs(lon) * 1e7),
+        round(abs(lat) * 1e7),
+        dop,
+        200,
+        speed,
+        speed + 5,
+        90,
+        0,
+        150,
+        12,
+        10,
+    )
+    return ndtp_frame(unit_id, 1, 101, bytes([0, 0]) + nav, crc_delta)

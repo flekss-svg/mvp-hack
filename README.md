@@ -77,6 +77,68 @@ GPS-отметки (NDTP) ──► data_sources/gps_telemetry.py ──┐
 
 ## Запуск
 
+### В Docker
+
+Требования: Docker Engine с Compose v2. На Windows — Docker Desktop с Linux-контейнерами.
+
+1. Положите данные организаторов в `data/hackathon/` с исходной структурой каталогов
+   (`train/`, `test/`, `validate/`, `labels/`). Эти данные подключаются к контейнерам
+   `ml` и `player` только для чтения и в образ не копируются.
+2. Если используется Яндекс.Карта, скопируйте `.env.example` в `.env` и задайте ключ:
+
+   ```dotenv
+   VITE_YANDEX_MAPS_API_KEY=ваш_ключ
+   NDTP_PLAN_TZ_OFFSET_S=0
+   ```
+
+   `.env` находится в `.gitignore`; ключ нельзя коммитить. Vite получает его через
+   Docker build-arg и вшивает во frontend во время сборки.
+3. Из корня репозитория запустите весь стек:
+
+   ```bash
+   docker compose up --build
+   ```
+
+После успешного старта:
+
+- дашборд: http://localhost:8000;
+- Swagger: http://localhost:8000/docs;
+- проверка готовности: http://localhost:8000/api/health;
+- вход NDTP для внешнего эмулятора: `host.docker.internal:9201`;
+- внутренний backend: `backend:8000`, внутренний ML-сервис: `ml:8100`.
+
+Сервисы Compose:
+
+| Сервис | Назначение | Команда / порт |
+|---|---|---|
+| `ml` | CatBoost-инференс по телеметрии | `uvicorn ml_service.server:app`, внутренний `8100` |
+| `backend` | FastAPI и TCP-приёмник NDTP | внутренний `8000`, опубликован `9201:9201` |
+| `web` | nginx + собранный `web/dist` | опубликован `8000:80` |
+| `player` | воспроизведение `traffic.csv` в NDTP с ускорением ×10 | поток с 06:00 длительностью 1080 минут |
+
+Режим «Симуляция» работает сразу из файлов `data/processed/replay.pkl` и таблиц
+расписания, которые входят в репозиторий и Python-образ. Примерно через минуту после
+старта `player` накапливается 10 минут виртуальной телеметрии и появляются live-прогнозы.
+По окончании потока машины исчезают с карты через 120 секунд. Перезапуск потока:
+
+```bash
+docker compose restart player
+```
+
+Остановить стек и удалить только созданные контейнеры/сеть:
+
+```bash
+docker compose down
+```
+
+Чтобы запустить интерфейс и API без встроенного проигрывателя:
+
+```bash
+docker compose up --build ml backend web
+```
+
+### Локально без Docker
+
 ```bash
 pip install -r requirements.txt
 ./run_all.sh                          # ~15 минут: данные -> обучение -> кэш дня -> сборка фронтенда

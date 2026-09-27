@@ -1,0 +1,83 @@
+name: transport-delay-predictor
+
+x-python-service: &python-service
+  image: transport-delay-python:local
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+
+services:
+  ml:
+    <<: *python-service
+    command: python -m uvicorn ml_service.server:app --host 0.0.0.0 --port 8100
+    environment:
+      NDTP_PLAN_TZ_OFFSET_S: ${NDTP_PLAN_TZ_OFFSET_S:-0}
+      HACKATHON_DATA_DIR: /app/data/hackathon
+    volumes:
+      - ./data/hackathon:/app/data/hackathon:ro
+    expose:
+      - "8100"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=3)); assert d['ready']"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  backend:
+    <<: *python-service
+    command: python -m uvicorn app.api:app --host 0.0.0.0 --port 8000 --workers 1
+    environment:
+      ML_URL: http://ml:8100
+      NDTP_HOST: 0.0.0.0
+      NDTP_PORT: 9201
+    depends_on:
+      ml:
+        condition: service_healthy
+    ports:
+      - "9201:9201"
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)); assert all(d['sources'][k]['ready'] for k in ('replay','live','ndtp','forecast'))"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_YANDEX_MAPS_API_KEY: ${VITE_YANDEX_MAPS_API_KEY:-}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8000:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  player:
+    <<: *python-service
+    command: >-
+      python scripts/ndtp_replay.py
+      --host backend
+      --wait 120
+      --start 06:00
+      --minutes 1080
+      --speed 10
+    environment:
+      NDTP_PLAN_TZ_OFFSET_S: ${NDTP_PLAN_TZ_OFFSET_S:-0}
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./data/hackathon:/app/data/hackathon:ro
+    restart: "no"

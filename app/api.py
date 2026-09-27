@@ -20,6 +20,8 @@
 одной командой.
 """
 import json
+import logging
+from contextlib import asynccontextmanager
 from typing import Callable
 
 from fastapi import FastAPI, HTTPException
@@ -28,13 +30,33 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.config import HORIZON_MIN, LATE_THRESHOLD_MIN, REPORTS, WEB_DIST
+from app.config import HORIZON_MIN, LATE_THRESHOLD_MIN, ML_URL, REPORTS, WEB_DIST
 from app.engine.feature_definitions import FEATURE_DESCRIPTIONS
 from app.model.artifacts import ModelArtifacts
+from app.service.forecast_client import ForecastClient
+from app.service.ndtp_server import NdtpServer
 from app.service.replay_service import ReplayService
 from app.service.risk_service import RiskService
 
-app = FastAPI(title="Предиктор задержек наземного транспорта")
+_ndtp_log = logging.getLogger("ndtp")
+_ndtp_log.setLevel(logging.INFO)
+_ndtp_log.handlers = logging.getLogger("uvicorn").handlers
+_ndtp_log.propagate = False
+
+_forecast = ForecastClient(ML_URL)
+_ndtp = NdtpServer(on_fix=_forecast.submit_fix if _forecast.enabled else None)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await _forecast.start()
+    await _ndtp.start()
+    yield
+    await _ndtp.stop()
+    await _forecast.close()
+
+
+app = FastAPI(title="Предиктор задержек наземного транспорта", lifespan=lifespan)
 
 # Дашборд в разработке живет на порту Vite и стучится сюда кросс-доменно.
 # Для прода сузить allow_origins до конкретного адреса.
@@ -108,12 +130,15 @@ class Context(BaseModel):
 
 
 @app.get("/api/health")
-def health():
+async def health():
+    forecast = await _forecast.health()
     return {
         "ok": True,
         "sources": {
             "replay": {"ready": _replay.ready, "error": _replay.error},
             "live": {"ready": _live.ready, "error": _live.error},
+            "ndtp": {"ready": _ndtp.listening, "error": _ndtp.error},
+            "forecast": forecast,
         },
         "tripsInSchedule": _live.get().schedule_size if _live.ready else 0,
     }
@@ -165,7 +190,14 @@ def replay_timeline(mode: str | None = None):
 
 @app.get("/api/live/snapshot")
 def live_snapshot():
+    if _forecast.enabled:
+        return _forecast.snapshot(_ndtp.snapshot())
     return _live.get().snapshot()
+
+
+@app.get("/api/live/units")
+def live_units():
+    return _ndtp.snapshot()
 
 
 @app.post("/api/events")

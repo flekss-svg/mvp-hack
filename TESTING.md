@@ -25,7 +25,7 @@ Playwright, затем включает `.githooks/pre-push` только для
 tests/
 ├── factories.py              маленькие общие фикстуры
 ├── unit/                     функции, адаптеры, engine и services без HTTP
-├── integration/              FastAPI через TestClient
+├── integration/              FastAPI через TestClient + настоящий NDTP TCP
 └── e2e/server.py             детерминированный full-stack сервер для Playwright
 
 web/
@@ -36,7 +36,8 @@ web/
 
 scripts/
 ├── setup-tests.ps1/.sh       первичная настройка окружения
-└── test-all.ps1/.sh          единая локальная проверка
+├── test-all.ps1/.sh          единая локальная проверка
+└── docker-smoke.sh            Compose build + HTTP health/smoke
 
 .githooks/pre-push            локальная защита перед push
 .github/workflows/tests.yml   независимая проверка в GitHub Actions
@@ -54,6 +55,11 @@ scripts/
 5. Smoke/E2E: настоящий FastAPI отдаёт production build; Chromium открывает страницу,
    проверяет основные endpoints, UI и отсутствие ошибок console/page.
 
+Дополнительно GitHub Actions выполняет `scripts/docker-smoke.sh`: собирает образы,
+поднимает `ml`, `backend` и `web`, требует `ready: true` у `replay`, `live`, `ndtp`,
+`forecast`, а затем проверяет главную страницу, Swagger и OpenAPI. `player` не запускается
+в CI, потому что закрытый `data/hackathon/` не хранится в Git.
+
 E2E использует маленькую детерминированную replay-фикстуру. Поэтому тест работает на
 чистом clone без `data/`, больших моделей и 15-минутного обучения.
 
@@ -67,6 +73,12 @@ npm.cmd --prefix web run build
 npm.cmd --prefix web run test:e2e
 ```
 
+На машине с Docker:
+
+```bash
+bash scripts/docker-smoke.sh
+```
+
 Все Python warnings настроены как ошибки. `npm audit` должен возвращать ноль известных
 уязвимостей. Сгенерированные `__pycache__`, coverage, build и Playwright artifacts
 игнорируются Git и не должны попадать в commit.
@@ -76,7 +88,7 @@ npm.cmd --prefix web run test:e2e
 ```powershell
 git status --short
 .\scripts\test-all.ps1
-git add .
+git add .github .gitignore .dockerignore .env.example Dockerfile Dockerfile.web compose.yaml docker ml_service app scripts tests web README.md TESTING.md requirements.txt pyproject.toml data/processed
 git status --short
 git commit -m "Add automated test pipeline"
 git push

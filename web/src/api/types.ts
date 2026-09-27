@@ -93,6 +93,7 @@ export interface LiveSnapshot {
   clock: string
   tracked: number
   kpi: Kpi[]
+  vehicles?: Vehicles
   alerts: Alert[]
 }
 
