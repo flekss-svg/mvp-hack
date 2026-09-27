@@ -1,6 +1,6 @@
 # Примеры запросов и ответов
 
-Ответы получены на текущем коде: Live — на треках validate, поданных через NDTP; Симуляция — на записанном дне 3 сентября 2026 года. Длинные массивы сокращены. Полная схема — [openapi.json](openapi.json), описание полей — раздел 5 технической документации.
+Ответы получены на текущем коде: Live — на треках validate, поданных через NDTP (идентификаторы машин, адреса остановок и координаты в Live-примерах заменены условными); Симуляция — на записанном дне 3 сентября 2026 года. Длинные массивы сокращены. Полная схема — [openapi.json](openapi.json), описание полей — раздел 5 технической документации.
 
 ## Готовность
 
@@ -42,9 +42,9 @@ GET /api/live/snapshot
   ],
   "alerts": [
     {
-      "tripId": 894032, "route": "129964", "mode": "unknown", "dest": "",
-      "stop": "Коломенская ул., д.7", "delay": 1.8, "risk": 77,
-      "currentTime": "08:28", "forecastStop": "Коломенская ул., д.7",
+      "tripId": 100001, "route": "tr-001", "mode": "unknown", "dest": "",
+      "stop": "ул. Примерная, д.1", "delay": 1.8, "risk": 77,
+      "currentTime": "08:28", "forecastStop": "ул. Примерная, д.1",
       "scheduledArrival": "08:39", "expectedArrival": "08:41",
       "expectedDelay": 2.4, "forecastDelay": 2.4, "forecastMinutes": 13,
       "averageSpeed": 13.0,
@@ -52,27 +52,27 @@ GET /api/live/snapshot
     }
   ],
   "vehicles": [
-    {"vehicleId": 1099984, "tripId": 1099984, "route": "133957", "mode": null,
-     "lat": 55.648453, "lon": 37.483974, "speed": 13, "course": 317,
+    {"vehicleId": 100002, "tripId": 100002, "route": "tr-002", "mode": null,
+     "lat": 55.750000, "lon": 37.600000, "speed": 13, "course": 317,
      "risk": 51, "level": 1, "delay": 1.3, "updatedAt": 1767702597000},
-    {"vehicleId": 902577, "tripId": 902577, "route": "130238", "mode": null,
-     "lat": 55.67087, "lon": 37.44797, "speed": 0, "course": 24,
+    {"vehicleId": 100003, "tripId": 100003, "route": "tr-003", "mode": null,
+     "lat": 55.760000, "lon": 37.610000, "speed": 0, "course": 24,
      "risk": null, "level": null, "delay": null, "updatedAt": 1767702588000}
   ],
   "trips": {
-    "1099984": {
-      "found": true, "onLine": true, "tripId": 1099984,
-      "route": "133957", "routeName": "ТС 133957", "mode": "unknown",
-      "currentTime": "12:29", "stop": "Ленинский просп., д.123Б",
-      "forecastStop": "Ленинский просп., д.123Б",
+    "100002": {
+      "found": true, "onLine": true, "tripId": 100002,
+      "route": "tr-002", "routeName": "ТС tr-002", "mode": "unknown",
+      "currentTime": "12:29", "stop": "просп. Условный, д.2",
+      "forecastStop": "просп. Условный, д.2",
       "scheduledArrival": "12:42", "expectedArrival": "12:43",
       "expectedDelay": 2.0, "forecastDelay": 2.0, "forecastMinutes": 14,
       "averageSpeed": 13.0, "risk": 51, "level": 1, "delay": 1.3,
       "forecastReason": "Много остановок до цели (9); уже отстаёт от графика на 80 с"
     },
-    "902577": {
-      "found": true, "onLine": true, "tripId": 902577,
-      "route": "130238", "routeName": "ТС 130238", "mode": "unknown",
+    "100003": {
+      "found": true, "onLine": true, "tripId": 100003,
+      "route": "tr-003", "routeName": "ТС tr-003", "mode": "unknown",
       "currentTime": "12:29", "averageSpeed": 0.0, "risk": null,
       "forecastReason": "Через 10–15 мин по расписанию нет остановки: рейс заканчивается или перерыв"
     }
@@ -93,9 +93,9 @@ GET /api/live/units
   "listening": true, "host": "0.0.0.0", "port": 9201, "error": null,
   "stats": {"connections": 1, "frames": 6, "fixes": 5, "ignored": 1, "crc_errors": 0},
   "units": [
-    {"unitId": 1099984, "connected": true, "remote": "127.0.0.1:63866", "packets": 5,
+    {"unitId": 100002, "connected": true, "remote": "127.0.0.1:63866", "packets": 5,
      "lastSeenSec": 0.5,
-     "position": {"lon": 37.483974, "lat": 55.648453, "valid": true,
+     "position": {"lon": 37.600000, "lat": 55.750000, "valid": true,
                   "gpsTime": 1767702657, "speed": 13, "course": 317}}
   ]
 }
