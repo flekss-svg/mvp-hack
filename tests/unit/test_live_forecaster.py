@@ -74,6 +74,16 @@ def test_stream_clock_is_the_newest_fix_of_any_unit(monkeypatch) -> None:
     assert out[1]["last_ping"] == T0 + 100
 
 
+def test_a_terminal_with_a_foreign_clock_does_not_move_the_stream_clock(monkeypatch) -> None:
+    """Эмулятор с autoGenerate шлет «сегодня», а расписание — другой день: часы потока он двигать не должен,
+    иначе все машины с расписанием разом становятся no_signal."""
+    fc = make(monkeypatch)
+    feed(fc, 1, T0, T0 + 120)
+    fc.ingest(fix(1166336, T0 + 250 * 86400))       # незнакомая машина через 250 суток
+    out = fc.forecasts()[1]
+    assert out["T"] == T0 + 120 and out["status"] == "ok"
+
+
 def test_statuses_for_short_history_end_of_plan_and_silence(monkeypatch) -> None:
     fc = make(monkeypatch)
     fc.ingest(fix(1, T0))
@@ -152,3 +162,12 @@ def test_vehicle_off_every_route_stays_unmatched(monkeypatch) -> None:
         fc.ingest(fix(555, t, lat=56.20 + 0.0001 * (t - T0)))
         if t % 60 == 0:
             assert 555 not in fc.forecasts()
+
+
+def test_route_found_by_schedule_travels_with_the_forecast(monkeypatch) -> None:
+    fc = make(monkeypatch, routes={"trA": {"route": "м17", "route_name": "Щукинская — Строгино", "mode": "bus"}})
+    feed(fc, 1, T0, T0 + 120)
+    feed(fc, 2, T0, T0 + 120)
+    out = fc.forecasts()
+    assert (out[1]["route"], out[1]["mode"]) == ("м17", "bus")
+    assert "route" not in out[2]                    # у trB маршрут не опознан

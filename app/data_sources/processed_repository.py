@@ -61,6 +61,16 @@ def route_name_map(routes: pd.DataFrame) -> dict:
     return dict(zip(routes.route_id, routes.route_short_name))
 
 
+# ---------- все маршруты города: какие остановки обслуживает каждый (data_sources/mos_ru_routes.py) ----------
+
+ROUTE_STOPS = PROC / "route_stops.parquet"
+
+
+def save_route_stops(table: pd.DataFrame) -> None:
+    PROC.mkdir(parents=True, exist_ok=True)
+    table.to_parquet(ROUTE_STOPS, index=False)
+
+
 # ---------- фактическое движение (симулятор или реальная телематика) ----------
 
 def save_fact_day(events: pd.DataFrame, date) -> None:

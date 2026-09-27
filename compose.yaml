@@ -1,0 +1,117 @@
+# docker compose up --build  ->  дашборд http://localhost:8000, NDTP на :9201.
+#
+# Зависимости по запуску намеренно мягкие: без data/hackathon/ ML-ядро не загрузит модели, но
+# дашборд и режим «Симуляция» все равно работают, а причина видна в GET /api/health (forecast).
+# Полную готовность (replay, live, ndtp, forecast) проверяет scripts/docker-smoke.sh.
+name: transport-delay-predictor
+
+x-python-service: &python-service
+  image: transport-delay-python:local
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+services:
+  ml:
+    <<: *python-service
+    command: python -m uvicorn ml_service.server:app --host 0.0.0.0 --port 8100
+    environment:
+      NDTP_PLAN_TZ_OFFSET_S: ${NDTP_PLAN_TZ_OFFSET_S:-0}
+    volumes:
+      - ./data/hackathon:/app/data/hackathon:ro
+    expose:
+      - "8100"
+    restart: unless-stopped
+    healthcheck:
+      # healthy = модели и данные хакатона загружены; без data/hackathon/ будет unhealthy
+      test: ["CMD", "python", "-c", "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=3))['ready']"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  backend:
+    <<: *python-service
+    command: python -m uvicorn app.api:app --host 0.0.0.0 --port 8000 --workers 1
+    environment:
+      ML_URL: http://ml:8100
+      NDTP_HOST: 0.0.0.0
+      NDTP_PORT: "9201"
+      NDTP_PLAN_TZ_OFFSET_S: ${NDTP_PLAN_TZ_OFFSET_S:-0}
+    depends_on:
+      ml:
+        condition: service_started   # к ML клиент переподключается сам, ждать готовности незачем
+    ports:
+      - "9201:9201"                  # сюда шлет эмулятор организаторов (host.docker.internal:9201)
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3))['ok']"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_YANDEX_MAPS_API_KEY: ${VITE_YANDEX_MAPS_API_KEY:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8000:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  # Проигрывает поток NDTP из data/hackathon/ в backend. Закончился (~1,8 ч) — машины уйдут
+  # с карты через 2 минуты; повторить: docker compose restart player
+  player:
+    <<: *python-service
+    command: >-
+      python scripts/ndtp_replay.py
+      --host backend
+      --wait 120
+      --start 06:00
+      --minutes 1080
+      --speed 10
+    volumes:
+      - ./data/hackathon:/app/data/hackathon:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: "no"
+
+  # Эмулятор терминалов организаторов — по желанию, профилем emulator. Образ берется из их архива
+  # (в git и в Docker Hub его нет), поэтому без профиля compose его не трогает:
+  #   docker load -i data/hackathon/ndtp-telemetry-emulator.tar
+  #   docker compose --profile emulator up -d
+  # Шлет машины без расписания (случайное блуждание): на карте видны, прогноза по ним нет.
+  emulator:
+    image: ndtp-telemetry-emulator:1.0
+    platform: linux/amd64
+    pull_policy: never
+    profiles: ["emulator"]
+    expose:
+      - "18080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Эмулятор держит конфиг только в памяти: после его старта отправляем, куда и сколько машин слать.
+  emulator-config:
+    <<: *python-service
+    profiles: ["emulator"]
+    command: python scripts/emulator_config.py --url http://emulator:18080 --target backend:9201 --units 5
+    depends_on:
+      emulator:
+        condition: service_started
+    restart: "no"

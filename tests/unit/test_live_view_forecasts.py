@@ -39,7 +39,8 @@ def test_no_forecasts_keeps_the_old_behaviour_and_the_event_stream_alerts() -> N
 
 def test_matched_vehicles_get_risk_level_alert_and_card_from_the_model() -> None:
     snap = live_snapshot([fix(1), fix(2), fix(3), fix(4)], None, {
-        1: forecast(1, 0.85, cur_dev_s=30.0),     # высокий риск, еще не опаздывает -> тревога
+        1: {**forecast(1, 0.85, cur_dev_s=30.0),  # высокий риск, еще не опаздывает -> тревога
+            "route": "м17", "route_name": "Метро «Щукинская» — Строгино", "mode": "bus"},
         2: forecast(2, 0.10),                     # низкий риск
         3: forecast(3, 0.92, cur_dev_s=400.0),    # высокий риск, но уже опаздывает -> без тревоги
     })                                            # 4 — нет расписания: контекстная машина
@@ -52,11 +53,16 @@ def test_matched_vehicles_get_risk_level_alert_and_card_from_the_model() -> None
     assert (by_id[1]["risk"], by_id[1]["level"]) == (85, 2)
     assert (by_id[2]["risk"], by_id[2]["level"]) == (10, 0)
     assert by_id[4]["risk"] is None and by_id[4]["level"] is None
-    # Номера маршрута в данных хакатона нет, показываем tr_id вместо прочерка.
-    assert by_id[1]["route"] == "tr1" and by_id[4]["route"] is None
+    # Номер маршрута ML восстановил по остановкам расписания; не восстановил — tr_id за маршрут не выдаем.
+    assert (by_id[1]["route"], by_id[1]["mode"]) == ("м17", "bus")
+    assert by_id[2]["route"] is None and by_id[4]["route"] is None
+    assert alert["route"] == "м17" and alert["mode"] == "bus"
 
     card = snap["trips"][1]
-    assert card["route"] == "tr1" and card["level"] == 2 and card["forecastDelay"] == 2.5
+    assert card["route"] == "м17" and card["routeName"] == "Метро «Щукинская» — Строгино · tr_id tr1"
+    assert card["level"] == 2 and card["forecastDelay"] == 2.5
+    assert snap["trips"][2]["route"] == "—"
+    assert snap["trips"][2]["routeName"] == "Номер маршрута не определен · tr_id tr1"
     assert card["scheduledArrival"] != card["expectedArrival"]
     assert card["forecastReason"] == "Долгий простой за последние 10 мин"
     assert snap["trips"][4]["forecastReason"] == UNMATCHED_REASON

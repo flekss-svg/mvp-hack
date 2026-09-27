@@ -25,9 +25,10 @@ def _pick_day(date: str | None):
     files = repo.list_fact_days()
     test = files[21:]
     if not test:
-        raise FileNotFoundError("Нет фактических дней в data/processed/fact — сначала ./run_all.sh")
+        raise FileNotFoundError(
+            "Нет фактических дней в data/processed/fact. Сначала расписание и факт движения: "
+            "python3 -m app.data_sources.mos_ru_schedule, затем python3 -m app.simulation.synthetic_telemetry")
     return next((x for x in test if date and date in str(x)), test[min(3, len(test) - 1)])
-
 
 def build(date: str | None = None) -> ReplayDay:
     path = _pick_day(date)
@@ -53,7 +54,7 @@ def build(date: str | None = None) -> ReplayDay:
     texts = pd.Series([reason_text(r) or "(причина не выявлена)" for r in reason[explain_rows]])
     for text, n in texts.value_counts().head(8).items():
         print(f"  {n:7,}  {text}")
-
+    
     lv = np.digitize(M.risk, list(RISK_LEVELS))
     for i, n in enumerate(["низкий", "средний", "высокий"]):
         m = lv == i

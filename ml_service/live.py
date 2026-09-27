@@ -32,11 +32,16 @@ from .features import DATA, full_features, load_plan
 from .map_matching import CONFIRM, TripIndex, match
 from .models import ONLINE_CLASSIFIER_PATH, ONLINE_REGRESSOR_PATH, load_classifier, predict_class_probs
 from .reasons import explain
+from .routes import load_route_stops, match_routes
 
 HORIZON_S = (600, 900)     # целевая остановка: плановое прибытие в (T+10 мин, T+15 мин]
 HISTORY_S = 3600           # сколько истории отметок держим: хватает и признакам (10 мин), и cur_dev
 MIN_VALID_PINGS = 2
 STALE_S = 300              # машина молчит дольше (по часам потока) — прогноз не выдаем
+# Часы потока двигают только отметки внутри суток расписания (с этим запасом). Терминал с другими
+# часами — эмулятор с autoGenerate шлет текущее время, неисправный терминал шлет что угодно — иначе
+# утащил бы «сейчас» на месяцы вперед, и все машины с расписанием разом стали бы no_signal.
+CLOCK_MARGIN_S = 3600
 MAX_RECOMPUTE = 8          # сколько машин пересчитать за один запрос: остальные отдаются из кэша
 MATCH_EVERY_S = 60         # как часто (по часам потока) пробовать сопоставить незнакомую машину с рейсом
 MAX_MATCH = 5              # сколько незнакомых машин сопоставлять за один запрос
@@ -65,7 +70,7 @@ def load_assets(data=DATA):
 class LiveForecaster:
     def __init__(self, plan: pd.DataFrame, unit_to_tr: dict, stop_names: dict, regressor: CatBoostRegressor,
                  classifier, *, tz_offset_s: int = 0, min_interval_s: float = 5.0, clock=time.monotonic,
-                 max_recompute: int = MAX_RECOMPUTE):
+                 max_recompute: int = MAX_RECOMPUTE, routes: dict | None = None):
         self._plan_by_tr = {tr: g.reset_index(drop=True) for tr, g in plan.groupby("tr_id", sort=False)}
         self._table = {u: tr for u, tr in unit_to_tr.items() if tr in self._plan_by_tr}
         self._unit_to_tr = dict(self._table)         # текущие привязки: таблица + найденные по треку
@@ -79,7 +84,9 @@ class LiveForecaster:
         self._features = list(regressor.feature_names_)
         self._tz, self._min_interval, self._clock = tz_offset_s, min_interval_s, clock
         self._max_recompute = max_recompute
-        self._stream_t = None       # «сейчас» потока: самая свежая метка среди всех машин
+        self._routes = routes or {}  # tr_id -> {route, route_name, mode} (ml_service/routes.py)
+        self._stream_t = None       # «сейчас» потока: самая свежая метка среди машин во времени расписания
+        self._clock_span = (int(plan["t_plan"].min()) - CLOCK_MARGIN_S, int(plan["t_plan"].max()) + CLOCK_MARGIN_S)
         self._pings: dict = {}      # tr_id -> deque[(t, lat, lon, speed, valid)]
         self._version: dict = {}    # tr_id -> сколько отметок принято (сброс кэша прогноза)
         self._cache: dict = {}      # tr_id -> {"version", "at", "forecast"}
@@ -101,7 +108,8 @@ class LiveForecaster:
         row = (t, float(fix.lat), float(fix.lon), float(fix.speed) if fix.location_valid else float("nan"),
                bool(fix.location_valid))
         with self._lock:
-            self._stream_t = t if self._stream_t is None else max(self._stream_t, t)
+            if self._clock_span[0] <= t <= self._clock_span[1]:
+                self._stream_t = t if self._stream_t is None else max(self._stream_t, t)
             tr = self._unit_to_tr.get(fix.unit_id)
             if tr is None:
                 _append(self._unknown.setdefault(fix.unit_id, deque()), row)
@@ -174,7 +182,8 @@ class LiveForecaster:
         for tr in trs:
             if tr in self._cache:
                 fc = self._cache[tr]["forecast"]
-                out[self._tr_to_unit[tr]] = fc if T - fc["last_ping"] <= STALE_S else {**fc, "status": "no_signal"}
+                fresh = fc if T - fc["last_ping"] <= STALE_S else {**fc, "status": "no_signal"}
+                out[self._tr_to_unit[tr]] = {**fresh, **self._routes.get(tr, {})}
         return out
 
     def _forecast(self, tr: str, rows: list, T: int) -> dict:
@@ -234,4 +243,4 @@ def load_forecaster(tz_offset_s: int = 0, **kw) -> LiveForecaster:
     plan, names, unit_to_tr = load_assets()
     reg = CatBoostRegressor().load_model(str(ONLINE_REGRESSOR_PATH))
     return LiveForecaster(plan, unit_to_tr, names, reg, load_classifier(ONLINE_CLASSIFIER_PATH),
-                          tz_offset_s=tz_offset_s, **kw)
+                          tz_offset_s=tz_offset_s, routes=match_routes(plan, load_route_stops()), **kw)

@@ -83,10 +83,18 @@ def _forecast_fields(fc: dict) -> dict:
     return out
 
 
+def _route_card(fc: dict) -> dict:
+    """Номер и название маршрута. В данных хакатона их нет — ML восстанавливает по остановкам
+    расписания (ml_service/routes.py); не опознан — так и пишем, tr_id за маршрут не выдаем."""
+    track = " · рейс определен по треку" if fc.get("matched_by") == "track" else ""
+    name = fc.get("route_name") or "Номер маршрута не определен"
+    return {"route": fc.get("route") or "—", "routeName": f"{name} · tr_id {fc['tr_id']}{track}",
+            "mode": fc.get("mode") or "unknown"}
+
+
 def _matched_vehicle(f: Fix, fc: dict) -> dict:
-    # В данных хакатона нет номера маршрута, только tr_id (см. docs/ndtp-emulator.md) — показываем его.
     v = _vehicle(f)
-    v["route"] = str(fc["tr_id"])
+    v["route"], v["mode"] = fc.get("route"), fc.get("mode")
     if fc["status"] == "ok":
         v.update(tripId=f.unit_id, risk=round(fc["p_late"] * 100), level=_level(fc["p_late"]),
                  delay=_num(fc["cur_dev_s"] / 60 if fc["cur_dev_s"] is not None else None, 1))
@@ -96,10 +104,8 @@ def _matched_vehicle(f: Fix, fc: dict) -> dict:
 
 
 def _matched_card(f: Fix, fc: dict) -> dict:
-    card = {"found": True, "onLine": True, "tripId": f.unit_id, "route": str(fc["tr_id"]),
-            "routeName": f"ТС {fc['tr_id']}" + (" · рейс определен по треку" if fc.get("matched_by") == "track" else ""),
-            "mode": "unknown", "averageSpeed": _num(fc["speed"]),
-            "currentTime": _hhmm_plan(fc["T"])}
+    card = {"found": True, "onLine": True, "tripId": f.unit_id, **_route_card(fc),
+            "averageSpeed": _num(fc["speed"]), "currentTime": _hhmm_plan(fc["T"])}
     if fc["status"] != "ok":
         return {**card, "risk": None, "forecastReason": STATUS_REASON[fc["status"]]}
     return {**card, **_forecast_fields(fc), "stop": fc["target_stop"] or fc["target_stop_id"],
@@ -108,7 +114,8 @@ def _matched_card(f: Fix, fc: dict) -> dict:
 
 
 def _alert(f: Fix, fc: dict) -> dict:
-    return {"tripId": f.unit_id, "route": str(fc["tr_id"]), "mode": "unknown", "dest": "",
+    route = _route_card(fc)
+    return {"tripId": f.unit_id, "route": route["route"], "mode": route["mode"], "dest": "",
             "stop": fc["target_stop"] or fc["target_stop_id"],
             "delay": _num(fc["cur_dev_s"] / 60 if fc["cur_dev_s"] is not None else 0.0, 1),
             "risk": round(fc["p_late"] * 100), **_forecast_fields(fc)}

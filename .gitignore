@@ -10,6 +10,7 @@ data/processed/*
 !data/processed/trips.parquet
 !data/processed/stop_times.parquet
 !data/processed/calendar.parquet
+!data/processed/route_stops.parquet
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -36,3 +37,6 @@ web/.checks/
 
 submissions/
 
+
+# ключ Яндекс.Карт для docker compose (см. .env.example)
+.env

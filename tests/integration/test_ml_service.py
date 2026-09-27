@@ -57,9 +57,13 @@ def test_models_missing_gives_503_with_a_hint(monkeypatch) -> None:
         assert r.status_code == 503 and "data/hackathon" in r.json()["detail"]["hint"]
 
 
-@pytest.fixture
-def live_server(fake):
-    config = uvicorn.Config(server.app, host="127.0.0.1", port=0, log_level="warning")
+def _serve():
+    """ml_service.server на свободном порту в фоновом потоке; yield — его адрес."""
+    # Тест не должен зависеть от того, что установлено рядом: ws="none" — websockets ML-сервису
+    # не нужен, loop="asyncio" — без uvloop. Оба на новых версиях Python дают DeprecationWarning,
+    # а в этом проекте предупреждение — ошибка (pyproject: filterwarnings = error).
+    config = uvicorn.Config(server.app, host="127.0.0.1", port=0, log_level="warning",
+                            ws="none", loop="asyncio")
     srv = uvicorn.Server(config)
     thread = threading.Thread(target=srv.run, daemon=True)
     thread.start()
@@ -70,6 +74,19 @@ def live_server(fake):
     yield f"http://127.0.0.1:{port}"
     srv.should_exit = True
     thread.join(timeout=5)
+
+
+@pytest.fixture
+def live_server(fake):
+    yield from _serve()
+
+
+@pytest.fixture
+def server_without_data(monkeypatch):
+    def broken(**kw):
+        raise FileNotFoundError("No such file or directory: '/app/data/hackathon/train/schedule.csv'")
+    monkeypatch.setattr(server, "load_forecaster", broken)
+    yield from _serve()
 
 
 def test_remote_client_batches_fixes_and_reads_forecasts(live_server, fake) -> None:
@@ -95,5 +112,15 @@ def test_remote_client_degrades_when_the_ml_service_is_down() -> None:
         assert "недоступен" in client.error
         client.flush()                                  # не удалось отправить — отметка осталась в очереди
         assert len(client._queue) == 1
+    finally:
+        client.close()
+
+
+def test_remote_client_reports_why_the_ml_service_is_not_ready(server_without_data) -> None:
+    """Сервис жив, но без data/hackathon/: в /api/health должна попасть его причина, а не «HTTP 503»."""
+    client = RemoteForecaster(server_without_data, flush_s=3600)
+    try:
+        assert client.ready is False
+        assert "не готов" in client.error and "data/hackathon/train/schedule.csv" in client.error
     finally:
         client.close()

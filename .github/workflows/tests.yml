@@ -54,3 +54,13 @@ jobs:
 
       - name: Full-stack smoke/E2E
         run: npm --prefix web run test:e2e
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # данных организаторов в CI нет: проверяется сборка и стек без прогноза по NDTP
+      - name: Build and smoke-test Docker Compose stack
+        run: sh scripts/docker-smoke.sh

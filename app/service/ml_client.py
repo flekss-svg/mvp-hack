@@ -46,11 +46,16 @@ class RemoteForecaster:
     @property
     def ready(self) -> bool:
         try:
-            ok = bool(self._request("GET", "/health").get("ready"))
+            health = self._request("GET", "/health")
         except Exception as e:  # noqa: BLE001
             self._fail(e)
             return False
-        return ok
+        if not health.get("ready"):
+            # Сервис жив, но модели не загрузил: в /api/health нужна его причина (например,
+            # нет data/hackathon/), а не 503 от очередного POST /fixes.
+            self.error = f"ML-модуль {self._url} не готов: {health.get('error') or 'модели не загружены'}"
+            return False
+        return True
 
     def close(self) -> None:
         self._stop.set()

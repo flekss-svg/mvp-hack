@@ -130,8 +130,12 @@ class Lazy:
         return self._error
 
 
+# Live нужно только расписание (первый шаг run_all.sh) и модели из git. Весь run_all.sh сюда
+# не подходит: он еще и переобучает модели, перезаписывая закоммиченные.
 _live = Lazy("live", lambda: RiskService(ModelArtifacts.load()),
-             "Нет обработанных данных или модели. Запустите ./run_all.sh")
+             "Для live-прогноза нужно расписание в data/processed: положите CSV data.mos.ru в "
+             "data/raw/ и запустите python3 -m app.data_sources.mos_ru_schedule. Модели (models/) "
+             "лежат в git")
 _replay = Lazy("replay", ReplayService.load,
                "Нет кэша записанного дня или он собран старой версией. Запустите python -m app.replay_build")
 
