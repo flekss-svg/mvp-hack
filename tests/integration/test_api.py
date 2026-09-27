@@ -35,6 +35,15 @@ def test_health_and_model(client: TestClient) -> None:
     model = client.get("/api/model")
     assert model.status_code == 200
     assert model.json()["precision"] == 83
+    assert model.json()["hackathon"] is None        # во временном REPORTS отчета хакатона нет
+
+
+def test_model_includes_hackathon_metrics_when_reported(client: TestClient, tmp_path) -> None:
+    (tmp_path / "hackathon_metrics.json").write_text(json.dumps({
+        "mae_s": 66.16, "mae_stream_s": 73.82, "baseline_cur_dev_mae_s": 93.36, "zero_mae_s": 103.34,
+        "classifier_accuracy": 0.771, "classifier_f1_macro": 0.673, "test_points": 353}), encoding="utf-8")
+    hackathon = client.get("/api/model").json()["hackathon"]
+    assert hackathon["mae"] == 66.16 and hackathon["accuracy"] == 77 and hackathon["testSize"] == 353
 
 
 def test_replay_endpoints_and_validation(client: TestClient) -> None:

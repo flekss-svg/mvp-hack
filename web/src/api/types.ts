@@ -150,6 +150,8 @@ export interface LiveVehicle {
 }
 
 export interface ModelQuality {
+  /** Модель на данных хакатона (режим Live, файл сдачи): MAE в секундах на test, классификатор — в процентах. */
+  hackathon?: { mae: number; maeStream: number; baselineMae: number; zeroMae: number; accuracy: number; f1: number; testSize: number } | null
   horizon: string
   threshold: number
   recall: number

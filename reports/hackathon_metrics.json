@@ -1,0 +1,10 @@
+{
+  "source": "Данные хакатона, итоговая проверка на test: scripts/model_v2.py, scripts/model_online.py, scripts/model_classifier.py",
+  "test_points": 353,
+  "mae_s": 66.16,
+  "mae_stream_s": 73.82,
+  "baseline_cur_dev_mae_s": 93.36,
+  "zero_mae_s": 103.34,
+  "classifier_accuracy": 0.771,
+  "classifier_f1_macro": 0.673
+}

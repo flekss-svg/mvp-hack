@@ -107,3 +107,48 @@ def test_invalid_fixes_do_not_count_as_positions(monkeypatch) -> None:
     for t in range(T0, T0 + 100, 10):
         fc.ingest(fix(1, t, lat=0.0, valid=False, speed=0))
     assert fc.forecasts()[1]["status"] == "few_pings"
+
+
+def make_distinct(monkeypatch) -> LiveForecaster:
+    """Два рейса по одной линии с разницей 15 минут: по треку их можно различить."""
+    monkeypatch.setattr(live, "predict_class_probs",
+                        lambda X, clf: pd.DataFrame({"early": [0.1], "ontime": [0.6], "late": [0.3]}))
+    monkeypatch.setattr(live, "explain", lambda X, top_k, model: [["причина"]])
+    shifted = plan_for("trB").assign(t_plan=lambda d: d["t_plan"] + 900)
+    plan = pd.concat([plan_for("trA"), shifted]).sort_values(["tr_id", "t_plan"])
+    return LiveForecaster(plan, {1: "trA", 2: "trB"}, {}, StubRegressor(), None, min_interval_s=0)
+
+
+def feed_on_schedule(fc: LiveForecaster, unit: int, t_from: int, t_to: int) -> None:
+    """Машина едет точно по графику рейса trA (остановка раз в минуту, 0.0045° между ними)."""
+    for t in range(t_from, t_to + 1, 10):
+        fc.ingest(fix(unit, t, lat=55.70 + 0.0045 * (t - T0) / 60))
+
+
+def test_unknown_terminal_is_matched_to_its_trip_by_track(monkeypatch) -> None:
+    fc = make_distinct(monkeypatch)
+    feed_on_schedule(fc, 777, T0, T0 + 700)             # терминала 777 нет в таблице
+    assert 777 not in fc.forecasts()                    # первое совпадение: еще не привязан
+    feed_on_schedule(fc, 777, T0 + 710, T0 + 780)
+    out = fc.forecasts()                                # второе совпадение подряд: привязан к trA
+    assert out[777]["tr_id"] == "trA" and out[777]["matched_by"] == "track"
+    assert out[777]["status"] == "ok"
+
+
+def test_terminal_from_the_table_takes_its_trip_back(monkeypatch) -> None:
+    fc = make_distinct(monkeypatch)
+    feed_on_schedule(fc, 777, T0, T0 + 700)
+    fc.forecasts()
+    feed_on_schedule(fc, 777, T0 + 710, T0 + 780)
+    assert fc.forecasts()[777]["tr_id"] == "trA"
+    feed_on_schedule(fc, 1, T0 + 700, T0 + 800)          # терминал trA по таблице вышел на связь
+    out = fc.forecasts()
+    assert 777 not in out and out[1]["matched_by"] == "table"
+
+
+def test_vehicle_off_every_route_stays_unmatched(monkeypatch) -> None:
+    fc = make_distinct(monkeypatch)
+    for t in range(T0, T0 + 1200, 10):
+        fc.ingest(fix(555, t, lat=56.20 + 0.0001 * (t - T0)))
+        if t % 60 == 0:
+            assert 555 not in fc.forecasts()

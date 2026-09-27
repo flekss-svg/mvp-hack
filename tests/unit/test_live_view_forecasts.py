@@ -52,9 +52,11 @@ def test_matched_vehicles_get_risk_level_alert_and_card_from_the_model() -> None
     assert (by_id[1]["risk"], by_id[1]["level"]) == (85, 2)
     assert (by_id[2]["risk"], by_id[2]["level"]) == (10, 0)
     assert by_id[4]["risk"] is None and by_id[4]["level"] is None
+    # Номера маршрута в данных хакатона нет, показываем tr_id вместо прочерка.
+    assert by_id[1]["route"] == "tr1" and by_id[4]["route"] is None
 
     card = snap["trips"][1]
-    assert card["level"] == 2 and card["forecastDelay"] == 2.5
+    assert card["route"] == "tr1" and card["level"] == 2 and card["forecastDelay"] == 2.5
     assert card["scheduledArrival"] != card["expectedArrival"]
     assert card["forecastReason"] == "Долгий простой за последние 10 мин"
     assert snap["trips"][4]["forecastReason"] == UNMATCHED_REASON
@@ -73,3 +75,9 @@ def test_matched_vehicle_without_a_forecast_says_why() -> None:
     assert snap["vehicles"][0]["level"] is None
     assert "нет остановки" in snap["trips"][1]["forecastReason"]
     assert kpi(snap)["high"] == "0" and snap["alerts"] == []
+
+
+def test_card_without_forecast_uses_the_same_clock_as_forecasts() -> None:
+    snap = live_snapshot([fix(1), fix(2)], None, {1: forecast(1, 0.1)})
+    # время карточки не должно зависеть от часового пояса компьютера
+    assert snap["trips"][2]["currentTime"] == snap["trips"][1]["currentTime"] == snap["clock"]

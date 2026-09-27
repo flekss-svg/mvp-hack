@@ -25,6 +25,7 @@
 import asyncio
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from typing import Callable
 
@@ -40,6 +41,7 @@ from app.service.ndtp_server import NdtpServer
 from app.engine.feature_definitions import FEATURE_DESCRIPTIONS
 from app.model.artifacts import ModelArtifacts
 from app.service.replay_service import ReplayService
+from app.service.ml_client import RemoteForecaster
 from app.service.risk_service import RiskService
 from ml_service.live import LiveForecaster, load_forecaster
 
@@ -49,16 +51,19 @@ _ndtp_log.setLevel(logging.INFO)
 _ndtp_log.handlers = logging.getLogger("uvicorn").handlers
 _ndtp_log.propagate = False
 
-# Прогноз по потоку NDTP на моделях хакатона (ml_service/live.py). Поднимается вместе с сервисом,
-# чтобы отметки копились с первого пакета; не поднялся — live работает как раньше, без прогнозов.
-_forecaster: LiveForecaster | None = None
+# Прогноз по потоку NDTP на моделях хакатона. ML_URL задан — ML-модуль работает отдельным сервисом
+# (ml_service/server.py, так в Docker); иначе он поднимается здесь же, в процессе API. Прогнозист создается
+# вместе с сервисом, чтобы отметки копились с первого пакета; не поднялся — live работает без прогнозов.
+ML_URL = os.environ.get("ML_URL", "").strip()
+_forecaster: LiveForecaster | RemoteForecaster | None = None
 _forecaster_error: str | None = None
 
 
 def _load_forecaster() -> None:
     global _forecaster, _forecaster_error
     try:
-        _forecaster, _forecaster_error = load_forecaster(tz_offset_s=PLAN_TZ_OFFSET_S), None
+        _forecaster = RemoteForecaster(ML_URL) if ML_URL else load_forecaster(tz_offset_s=PLAN_TZ_OFFSET_S)
+        _forecaster_error = None
     except Exception as e:  # noqa: BLE001 — причина уходит в /api/health
         _forecaster, _forecaster_error = None, f"{type(e).__name__}: {e}"
         logging.getLogger("uvicorn.error").warning("прогноз по NDTP недоступен: %s", _forecaster_error)
@@ -78,6 +83,8 @@ async def lifespan(_: FastAPI):
     await _ndtp.start()
     yield
     await _ndtp.stop()
+    if isinstance(_forecaster, RemoteForecaster):
+        _forecaster.close()
 
 
 app = FastAPI(title="Предиктор задержек наземного транспорта", lifespan=lifespan)
@@ -153,6 +160,14 @@ class Context(BaseModel):
     holiday: int = 0
 
 
+def _forecast_status() -> dict:
+    if isinstance(_forecaster, RemoteForecaster):
+        ready = _forecaster.ready
+        return {"ready": ready, "error": None if ready else _forecaster.error or "ML-модуль не загрузил модели",
+                "mode": "service", "url": ML_URL}
+    return {"ready": _forecaster is not None, "error": _forecaster_error, "mode": "in-process"}
+
+
 @app.get("/api/health")
 def health():
     return {
@@ -161,7 +176,7 @@ def health():
             "replay": {"ready": _replay.ready, "error": _replay.error},
             "live": {"ready": _live.ready, "error": _live.error},
             "ndtp": {"ready": _ndtp.listening, "error": _ndtp.error},
-            "forecast": {"ready": _forecaster is not None, "error": _forecaster_error},
+            "forecast": _forecast_status(),
         },
         "tripsInSchedule": _live.get().schedule_size if _live.ready else 0,
     }
@@ -169,8 +184,9 @@ def health():
 
 @app.get("/api/model")
 def model_quality():
-    """Панель «Качество модели» — из reports/metrics.json, чтобы после переобучения дашборд
-    обновлялся сам. Подписи признаков тоже приходят с сервера: у фронтенда своей копии нет."""
+    """Панель «Качество модели»: метрики на данных хакатона (reports/hackathon_metrics.json) и метрики
+    модели режима «Симуляция» (reports/metrics.json), чтобы после переобучения дашборд обновлялся сам.
+    Подписи признаков тоже приходят с сервера: у фронтенда своей копии нет."""
     path = REPORTS / "metrics.json"
     if not path.exists():
         raise HTTPException(503, detail={"what": "model", "error": "нет reports/metrics.json",
@@ -181,7 +197,14 @@ def model_quality():
     labels = {**FEATURE_DESCRIPTIONS, **m.get("feature_descriptions", {})}
     top = sorted(fi.items(), key=lambda kv: -kv[1])[:5]
     peak = top[0][1] if top else 1.0
+    hackathon_path = REPORTS / "hackathon_metrics.json"
+    hackathon = json.loads(hackathon_path.read_text(encoding="utf-8")) if hackathon_path.exists() else None
     return {
+        "hackathon": None if hackathon is None else {
+            "mae": hackathon["mae_s"], "maeStream": hackathon["mae_stream_s"],
+            "baselineMae": hackathon["baseline_cur_dev_mae_s"], "zeroMae": hackathon["zero_mae_s"],
+            "accuracy": round(hackathon["classifier_accuracy"] * 100), "f1": hackathon["classifier_f1_macro"],
+            "testSize": hackathon["test_points"]},
         "horizon": f"{HORIZON_MIN[0]}–{HORIZON_MIN[1]} мин",
         "threshold": LATE_THRESHOLD_MIN,
         "recall": 70,

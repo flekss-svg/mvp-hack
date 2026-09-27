@@ -92,6 +92,15 @@ describe('ModelPanel', () => {
     expect(screen.getByText('33.7')).toBeVisible()
   })
 
+  it('shows hackathon metrics before the simulation ones', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ ...model, hackathon: { mae: 66.16, maeStream: 73.82, baselineMae: 93.36, zeroMae: 103.34, accuracy: 77, f1: 0.673, testSize: 353 } }))
+    render(<ModelPanel demo={false} />)
+    await userEvent.click(screen.getByText('Качество прогноза'))
+    expect(await screen.findByText('66 с')).toBeVisible()
+    expect(screen.getByText('93 с')).toBeVisible()
+    expect(screen.getByText('Режим «Симуляция»')).toBeVisible()
+  })
+
   it('shows an API error with a retry button', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ detail: 'Метрики недоступны' }, 503))
     render(<ModelPanel demo={false} />)

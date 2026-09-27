@@ -11,6 +11,7 @@ NDTP_PLAN_TZ_OFFSET_S=N, передайте тот же N в --tz-offset, тог
 Запуск (API должен уже работать):
     python scripts/ndtp_replay.py                       # validate, с 08:00, 2 часа, x30
     python scripts/ndtp_replay.py --start 12:30 --minutes 60 --speed 60 --units 10
+    python scripts/ndtp_replay.py --hide-ids    # незнакомые терминалы: рейс определяется по треку
 """
 import argparse
 import asyncio
@@ -27,6 +28,7 @@ from ml_service.features import DATA, to_ts
 
 SERVICE_GENERIC, SERVICE_NAV = 0, 1
 NPH_CONN_REQUEST, NPH_REALTIME = 100, 101
+HIDDEN_BASE = 900_000_000        # номера терминалов при --hide-ids: вне диапазона выгрузки
 
 
 def frame(unit_id: int, service_id: int, nph_type: int, body: bytes) -> bytes:
@@ -70,8 +72,21 @@ def load(part: str, start_s: int | None, minutes: int, max_units: int | None, tz
     return df
 
 
-async def play(df: pd.DataFrame, host: str, port: int, speed: float) -> None:
-    reader, writer = await asyncio.open_connection(host, port)
+async def connect(host: str, port: int, wait_s: float):
+    """Подключиться к приемнику; если он еще поднимается (например, в Docker), подождать до wait_s секунд."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + wait_s
+    while True:
+        try:
+            return await asyncio.open_connection(host, port)
+        except OSError:
+            if loop.time() >= deadline:
+                raise
+            await asyncio.sleep(2)
+
+
+async def play(df: pd.DataFrame, host: str, port: int, speed: float, wait_s: float = 0) -> None:
+    reader, writer = await connect(host, port, wait_s)
     for unit in df["unit"].unique():
         writer.write(handshake(int(unit)))
     await writer.drain()
@@ -105,13 +120,19 @@ def main() -> None:
     ap.add_argument("--minutes", type=int, default=120, help="сколько минут потока проиграть")
     ap.add_argument("--units", type=int, default=None, help="ограничить число машин")
     ap.add_argument("--tz-offset", type=int, default=0, help="секунд вычесть из времени файла (см. описание)")
+    ap.add_argument("--wait", type=float, default=0, help="сколько секунд ждать, пока приемник начнет принимать соединения")
+    ap.add_argument("--hide-ids", action="store_true",
+                    help="подменить номера терминалов: сервису они незнакомы, рейс определяется по треку")
     a = ap.parse_args()
     hh, mm = map(int, a.start.split(":"))
     df = load(a.part, hh * 3600 + mm * 60, a.minutes, a.units, a.tz_offset)
     if df.empty:
         sys.exit("в этом интервале нет данных: измените --start/--minutes")
-    print(f"{len(df)} отметок, {df['unit'].nunique()} машин, поток x{a.speed:g} -> {a.host}:{a.port}")
-    asyncio.run(play(df, a.host, a.port, a.speed))
+    if a.hide_ids:
+        df["unit"] = df["unit"].map({u: HIDDEN_BASE + i for i, u in enumerate(sorted(df["unit"].unique()))})
+    print(f"{len(df)} отметок, {df['unit'].nunique()} машин, поток x{a.speed:g} -> {a.host}:{a.port}"
+          + (", номера терминалов подменены" if a.hide_ids else ""))
+    asyncio.run(play(df, a.host, a.port, a.speed, a.wait))
 
 
 if __name__ == "__main__":

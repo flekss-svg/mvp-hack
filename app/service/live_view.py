@@ -14,7 +14,7 @@ forecasts=None или пуст — прогнозов нет (прогнозис
 import math
 from datetime import datetime, timezone
 
-from app.config import LATE_THRESHOLD_MIN, RISK_LEVELS
+from app.config import LATE_THRESHOLD_MIN, PLAN_TZ_OFFSET_S, RISK_LEVELS
 from app.data_sources.ndtp_protocol import Fix
 
 UNMATCHED_REASON = "Прогноз строится только для ТС, сопоставленных с расписанием"
@@ -24,10 +24,6 @@ STATUS_REASON = {
     "no_signal": "Давно нет отметок от машины: прогноз не выдается",
 }
 ALERT_LIMIT = 30
-
-
-def _hhmm(unix_s: float) -> str:
-    return datetime.fromtimestamp(unix_s).strftime("%H:%M")
 
 
 def _hhmm_plan(t: float) -> str:
@@ -62,7 +58,8 @@ def _card(f: Fix) -> dict:
     return {
         "found": True, "onLine": True, "tripId": f.unit_id,
         "route": "—", "routeName": "Не сопоставлено с расписанием", "mode": "unknown",
-        "risk": None, "currentTime": _hhmm(f.gps_time),
+        # та же шкала времени, что у машин с прогнозом и у часов потока (время расписания, без пояса ПК)
+        "risk": None, "currentTime": _hhmm_plan(f.gps_time + PLAN_TZ_OFFSET_S),
         "averageSpeed": f.speed, "forecastReason": UNMATCHED_REASON,
     }
 
@@ -87,7 +84,9 @@ def _forecast_fields(fc: dict) -> dict:
 
 
 def _matched_vehicle(f: Fix, fc: dict) -> dict:
+    # В данных хакатона нет номера маршрута, только tr_id (см. docs/ndtp-emulator.md) — показываем его.
     v = _vehicle(f)
+    v["route"] = str(fc["tr_id"])
     if fc["status"] == "ok":
         v.update(tripId=f.unit_id, risk=round(fc["p_late"] * 100), level=_level(fc["p_late"]),
                  delay=_num(fc["cur_dev_s"] / 60 if fc["cur_dev_s"] is not None else None, 1))
@@ -97,8 +96,9 @@ def _matched_vehicle(f: Fix, fc: dict) -> dict:
 
 
 def _matched_card(f: Fix, fc: dict) -> dict:
-    card = {"found": True, "onLine": True, "tripId": f.unit_id, "route": "—",
-            "routeName": f"ТС {fc['tr_id']}", "mode": "unknown", "averageSpeed": _num(fc["speed"]),
+    card = {"found": True, "onLine": True, "tripId": f.unit_id, "route": str(fc["tr_id"]),
+            "routeName": f"ТС {fc['tr_id']}" + (" · рейс определен по треку" if fc.get("matched_by") == "track" else ""),
+            "mode": "unknown", "averageSpeed": _num(fc["speed"]),
             "currentTime": _hhmm_plan(fc["T"])}
     if fc["status"] != "ok":
         return {**card, "risk": None, "forecastReason": STATUS_REASON[fc["status"]]}
@@ -108,7 +108,7 @@ def _matched_card(f: Fix, fc: dict) -> dict:
 
 
 def _alert(f: Fix, fc: dict) -> dict:
-    return {"tripId": f.unit_id, "route": "—", "mode": "unknown", "dest": "",
+    return {"tripId": f.unit_id, "route": str(fc["tr_id"]), "mode": "unknown", "dest": "",
             "stop": fc["target_stop"] or fc["target_stop_id"],
             "delay": _num(fc["cur_dev_s"] / 60 if fc["cur_dev_s"] is not None else 0.0, 1),
             "risk": round(fc["p_late"] * 100), **_forecast_fields(fc)}
