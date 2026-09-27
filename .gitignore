@@ -1,5 +1,15 @@
 venv/
-data/
+# данные не храним, кроме того, что нужно API для режима «Симуляция» сразу после клонирования:
+# кэш записанного дня и таблицы расписания (производные открытых данных data.mos.ru, ~25 МБ)
+data/*
+!data/processed/
+data/processed/*
+!data/processed/replay.pkl
+!data/processed/routes.parquet
+!data/processed/stops.parquet
+!data/processed/trips.parquet
+!data/processed/stop_times.parquet
+!data/processed/calendar.parquet
 __pycache__/
 *.py[cod]
 .pytest_cache/
